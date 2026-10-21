@@ -95,7 +95,7 @@ class MainActivity : Activity() {
         (title.parent as LinearLayout).setBackgroundColor(color)
         title.text = t
         body.text = when (step) {
-            Step.IDLE -> "고속도로에서 차가 멈추면 자동으로 안내합니다."
+            Step.IDLE -> Guard.advice ?: "고속도로에서 차가 멈추면 자동으로 안내합니다."
             Step.EVACUATE -> StopGuide.SPEECH.getValue(step) + "\n나가기 전에 QR을 휴대폰으로 찍으면 112 신고 문자가 준비됩니다."
             Step.REPORT -> "112 · 1588-2504 (무료 긴급견인)\n위치: ${Guard.report?.where ?: Guard.address ?: "확인 중"}"
             else -> StopGuide.SPEECH.getValue(step)

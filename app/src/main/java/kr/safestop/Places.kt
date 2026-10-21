@@ -21,6 +21,13 @@ class Places(private val all: List<Place>) {
     fun inStopZone(lat: Double, lng: Double, radiusM: Double = 400.0) =
         nearest(lat, lng)?.let { it.second <= radiusM } ?: false
 
+    fun nextAhead(lat: Double, lng: Double, heading: Double?, types: Set<String>, maxM: Double = 50_000.0): Pair<Place, Double>? =
+        all.asSequence().filter { it.type in types }
+            .map { it to distanceM(lat, lng, it.lat, it.lng) }
+            .filter { it.second in 300.0..maxM }
+            .filter { heading == null || angleDiff(bearing(lat, lng, it.first.lat, it.first.lng), heading) < 60 }
+            .minByOrNull { it.second }
+
     fun describe(lat: Double, lng: Double, heading: Double? = null, maxM: Double = 30_000.0): String? {
         val near = all.map { it to distanceM(lat, lng, it.lat, it.lng) }.filter { it.second <= maxM }.sortedBy { it.second }
         val (closest, closestM) = near.firstOrNull() ?: return null
@@ -39,7 +46,7 @@ class Places(private val all: List<Place>) {
     companion object {
         val TYPES = setOf("rest", "shelter", "toll")
 
-        private fun label(p: Place) = p.name.substringBefore('(') + when (p.type) {
+        fun label(p: Place) = p.name.substringBefore('(') + when (p.type) {
             "rest" -> "휴게소"; "shelter" -> "졸음쉼터"; else -> "톨게이트"
         }
 

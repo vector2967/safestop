@@ -11,6 +11,8 @@ data class CarState(
     val airbagDeployed: Boolean = false,
     val speedLimitKmh: Int = 0,
     val nearStopZone: Boolean = false,
+    val socPct: Int? = null,
+    val fuelPct: Int? = null,
 )
 
 class StopGuide(

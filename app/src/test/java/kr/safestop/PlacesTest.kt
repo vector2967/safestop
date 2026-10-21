@@ -36,6 +36,19 @@ class PlacesTest {
         assertEquals("경부고속도로 북쪽휴게소 5.6km 전, 남쪽졸음쉼터에서 5.6km 지난 곳", road.describe(36.95, 127.0, 0.0))
     }
 
+    @Test fun nextAheadSkipsPlacesBehindAndWrongType() {
+        val road = Places.parse(
+            """
+            type,name,route,direction,lat,lng
+            rest,뒤(서울),경부선,서울방향,36.90,127.0
+            shelter,앞쉼터,경부선,서울방향,37.00,127.0
+            rest,더앞(서울),경부선,서울방향,37.10,127.0
+            """.trimIndent()
+        )
+        assertEquals("앞쉼터", road.nextAhead(36.95, 127.0, 0.0, setOf("rest", "shelter"))!!.first.name)
+        assertEquals("더앞(서울)", road.nextAhead(36.95, 127.0, 0.0, setOf("rest"))!!.first.name)
+    }
+
     @Test fun stopZoneRadius() {
         assertTrue(places.inStopZone(36.9300, 127.1520))
         assertFalse(places.inStopZone(36.9500, 127.1520))

@@ -1,6 +1,8 @@
 package kr.safestop
 
+import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
+import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.tts.TextToSpeech
@@ -14,6 +16,8 @@ import ai.pleos.playground.vehicle.constant.area.DoorValue
 import ai.pleos.playground.vehicle.constant.area.SeatValue
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.DoorPositionListener
+import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
+import ai.pleos.playground.vehicle.listener.FuelPercentListener
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
@@ -42,6 +46,8 @@ object Guard {
     var state = CarState()
     var address: String? = null
     var report: Report? = null
+    var advice: String? = null
+    val advisor = Advisor()
     var onChange: (() -> Unit)? = null
     var say: (String) -> Unit = {}
 
@@ -85,19 +91,45 @@ class GuardService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (car == null) listenSpeed()
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        intent?.getStringExtra(FAKE_LOCATION)?.takeIf { debuggable }?.split(',')?.map(String::toDouble)?.let { (lat, lng) ->
-            fakeLocation = lat to lng
-            onLocation(lat, lng, "%.5f, %.5f (테스트 위치)".format(lat, lng))
+        intent?.getStringExtra(FAKE_LOCATION)?.takeIf { debuggable }?.split(',')?.map(String::toDouble)?.let { v ->
+            fakeLocation = true
+            onLocation(v[0], v[1], "%.5f, %.5f (테스트 위치)".format(v[0], v[1]), v.getOrNull(2))
         }
+        if (intent?.action == ACTION_ADD_WAYPOINT) navi?.addWaypoint(RequestWaypointInfo(
+            intent.getDoubleExtra("lat", 0.0), intent.getDoubleExtra("lng", 0.0),
+            intent.getStringExtra("name") ?: "", WaypointIndex.FIRST, "", "", "0", ""))
         return START_STICKY
     }
 
-    private var fakeLocation: Pair<Double, Double>? = null
+    private var fakeLocation = false
+    private var location: Triple<Double, Double, Double?>? = null
 
     private fun onLocation(lat: Double, lng: Double, address: String?, heading: Double? = null) = set {
+        location = Triple(lat, lng, heading)
         Guard.address = address ?: "%.5f, %.5f".format(lat, lng)
         Guard.report = Report(places.describe(lat, lng, heading), lat, lng)
         it.copy(nearStopZone = places.inStopZone(lat, lng))
+    }
+
+    private fun advise(advice: Advice) {
+        val (lat, lng, heading) = location ?: return
+        val types = if (advice == Advice.LOW_ENERGY) setOf("rest") else setOf("rest", "shelter")
+        val (place, m) = places.nextAhead(lat, lng, heading, types) ?: return
+        val name = Places.label(place)
+        val text = when (advice) {
+            Advice.LOW_ENERGY -> if (Guard.state.socPct != null) "배터리가 부족합니다. 갓길에 서지 말고 %.0f킬로미터 앞 %s에서 충전하세요."
+                else "연료가 부족합니다. 갓길에 서지 말고 %.0f킬로미터 앞 %s에서 주유하세요."
+            Advice.LONG_DRIVE -> "두 시간 넘게 운전하셨습니다. 갓길이 아닌 %.0f킬로미터 앞 %s에서 쉬어 가세요."
+        }.format(m / 1000, name)
+        say(text)
+        Guard.advice = text
+        val add = PendingIntent.getForegroundService(this, 3, Intent(this, GuardService::class.java)
+            .setAction(ACTION_ADD_WAYPOINT).putExtra("lat", place.lat).putExtra("lng", place.lng).putExtra("name", name),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("$name 경유 추천").setContentText(text).setCategory(Notification.CATEGORY_NAVIGATION)
+            .addAction(Notification.Action.Builder(null, "경유지로 추가", add).build()).setAutoCancel(true).build()
+        getSystemService(NotificationManager::class.java).notify(3, n)
     }
 
     override fun onDestroy() {
@@ -141,6 +173,14 @@ class GuardService : Service() {
                 override fun onFailed(e: Exception) = fail(e)
             })
         }
+        vehicle.getEvBattery().registerEvBatteryStateOfCharge(object : EvBatteryStateOfChargeListener {
+            override fun onEvBatteryStateOfChargeUpdated(soc: Int?) = set { it.copy(socPct = soc) }
+            override fun onFailed(e: Exception) = fail(e)
+        })
+        vehicle.getFuel().registerFuelPercent(object : FuelPercentListener {
+            override fun onFuelPercentUpdated(pct: Int?) = set { it.copy(fuelPct = pct) }
+            override fun onFailed(e: Exception) = fail(e)
+        })
         vehicle.getSafety().registerSeatAirbagDeployed(SeatArea(SeatValue.ROW_1_LEFT), object : SeatAirbagDeployedListener {
             override fun onSeatAirbagDeployUpdated(deployed: Boolean?) = set { it.copy(airbagDeployed = deployed == true) }
             override fun onFailed(e: Exception) = fail(e)
@@ -151,7 +191,7 @@ class GuardService : Service() {
         val n = NaviHelper(applicationContext).also { navi = it }
         val l = object : NaviHelperEventListener {
             override fun onCurrentLocationInfo(info: CurrentLocationInfo) {
-                if (fakeLocation == null) onLocation(info.latitude, info.longitude, info.address, info.heading)
+                if (!fakeLocation) onLocation(info.latitude, info.longitude, info.address, info.heading)
             }
             override fun onCurrentRoadSpeedLimit(speedLimit: Int) = set { it.copy(speedLimitKmh = speedLimit) }
         }
@@ -170,7 +210,9 @@ class GuardService : Service() {
 
     private fun step() {
         val before = Guard.guide.step
-        Guard.guide.update(Guard.state, System.currentTimeMillis())?.let(::say)
+        val now = System.currentTimeMillis()
+        Guard.guide.update(Guard.state, now)?.let(::say)
+        if (Guard.guide.step == Step.IDLE) Guard.advisor.update(Guard.state, now)?.let(::advise)
         if (before == Step.IDLE && Guard.guide.step != Step.IDLE) showGuide()
         Guard.onChange?.invoke()
     }
@@ -213,5 +255,6 @@ class GuardService : Service() {
 
         // 에뮬레이터 내비가 GPS 주입을 따르지 않아 디버그 빌드에서만 위치 주입 허용
         const val FAKE_LOCATION = "fake_location"
+        const val ACTION_ADD_WAYPOINT = "kr.safestop.ADD_WAYPOINT"
     }
 }
