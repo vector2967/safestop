@@ -11,15 +11,37 @@ class StopGuideTest {
     @Test fun highwayStopRunsAllSteps() {
         g.update(CarState(speedKmh = 100f, occupiedSeats = 2), 0)
         assertNotNull(g.update(CarState(speedKmh = 0f, parkedOrNeutral = true, occupiedSeats = 2), 30_000))
+        assertEquals(Step.CONFIRM, g.step)
+        g.update(CarState(parkedOrNeutral = true, occupiedSeats = 2), 35_000)
         assertEquals(Step.HAZARD, g.step)
-        g.update(CarState(parkedOrNeutral = true, occupiedSeats = 2), 39_000)
+        g.update(CarState(parkedOrNeutral = true, occupiedSeats = 2), 43_000)
         assertEquals(Step.TRUNK, g.step)
-        g.update(CarState(parkedOrNeutral = true, trunkOpen = true, occupiedSeats = 2), 40_000)
+        g.update(CarState(parkedOrNeutral = true, trunkOpen = true, occupiedSeats = 2), 44_000)
         assertEquals(Step.EVACUATE, g.step)
-        assertNotNull(g.update(CarState(parkedOrNeutral = true, driverDoorOpen = true, occupiedSeats = 1), 41_000))
-        assertNull(g.update(CarState(parkedOrNeutral = true, driverDoorOpen = true, occupiedSeats = 1), 42_000))
-        g.update(CarState(parkedOrNeutral = true, occupiedSeats = 0), 43_000)
+        assertNotNull(g.update(CarState(parkedOrNeutral = true, driverDoorOpen = true, occupiedSeats = 1), 45_000))
+        assertNull(g.update(CarState(parkedOrNeutral = true, driverDoorOpen = true, occupiedSeats = 1), 46_000))
+        g.update(CarState(parkedOrNeutral = true, occupiedSeats = 0), 47_000)
         assertEquals(Step.REPORT, g.step)
+    }
+
+    @Test fun speedBlipInParkDoesNotCancel() {
+        g.update(CarState(speedKmh = 100f), 0)
+        g.update(CarState(parkedOrNeutral = true), 10_000)
+        g.update(CarState(speedKmh = 19f, parkedOrNeutral = true), 11_000)
+        assertEquals(Step.CONFIRM, g.step)
+    }
+
+    @Test fun doorOpenSkipsConfirmWait() {
+        g.update(CarState(speedKmh = 100f), 0)
+        g.update(CarState(parkedOrNeutral = true), 10_000)
+        g.update(CarState(parkedOrNeutral = true, driverDoorOpen = true), 11_000)
+        assertEquals(Step.HAZARD, g.step)
+    }
+
+    @Test fun stopNearRestAreaDoesNotTrigger() {
+        g.update(CarState(speedKmh = 100f), 0)
+        assertNull(g.update(CarState(parkedOrNeutral = true, nearStopZone = true), 10_000))
+        assertEquals(Step.IDLE, g.step)
     }
 
     @Test fun cityStopDoesNotTrigger() {
