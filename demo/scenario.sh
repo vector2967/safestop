@@ -38,4 +38,7 @@ sleep 8
 say "조수석 탑승자도 대피"
 seat passenger false
 sleep 10
+
+say "정리: 문·트렁크 닫기(열린 채 기어를 바꾸면 시스템 경고창이 뜸)"
+put "body?door_fl=0"; put "body?trunk=0"
 say "끝"

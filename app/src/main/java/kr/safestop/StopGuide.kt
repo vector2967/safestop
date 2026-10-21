@@ -84,6 +84,8 @@ class StopGuide(
         else -> null
     }
 
+    fun confirmLeftSec(now: Long) = ((confirmMs - (now - stepSince) + 999) / 1000).coerceAtLeast(0)
+
     fun reset() { step = Step.IDLE; remindedPassengers = false }
 
     private fun go(next: Step, now: Long): String {
