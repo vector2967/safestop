@@ -24,6 +24,18 @@ class StopGuideTest {
         assertEquals(Step.REPORT, g.step)
     }
 
+    @Test fun repeatsIgnoredStepTwiceAtMost() {
+        g.update(CarState(speedKmh = 100f), 0)
+        g.update(CarState(parkedOrNeutral = true), 10_000)
+        g.update(CarState(parkedOrNeutral = true), 15_000)
+        g.update(CarState(parkedOrNeutral = true), 23_000)
+        assertEquals(Step.TRUNK, g.step)
+        assertNull(g.update(CarState(parkedOrNeutral = true), 30_000))
+        assertNotNull(g.update(CarState(parkedOrNeutral = true), 43_000))
+        assertNotNull(g.update(CarState(parkedOrNeutral = true), 63_000))
+        assertNull(g.update(CarState(parkedOrNeutral = true), 83_000))
+    }
+
     @Test fun speedBlipInParkDoesNotCancel() {
         g.update(CarState(speedKmh = 100f), 0)
         g.update(CarState(parkedOrNeutral = true), 10_000)

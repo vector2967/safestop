@@ -32,6 +32,7 @@ import android.car.hardware.CarPropertyValue
 import android.car.hardware.property.CarPropertyManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -79,7 +80,13 @@ class GuardService : Service() {
         listenNavi()
         tts = TextToSpeech(applicationContext, Mode.ON_DEVICE).also { t ->
             t.initialize(object : OnInitializeListener {
-                override fun onSuccess() { t.setLocale(Locale.KOREA); ttsReady = true }
+                override fun onSuccess() {
+                    t.setLocale(Locale.KOREA)
+                    // 내비 안내 용도로 내면 AAOS가 재생 중인 음악을 줄인다
+                    t.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    ttsReady = true
+                }
                 override fun onFailure(errorType: ErrorType) { Log.w(TAG, "tts: $errorType") }
             })
         }

@@ -20,11 +20,14 @@ class StopGuide(
     private val highwayMemoryMs: Long = 120_000,
     private val confirmMs: Long = 5_000,
     private val hazardAutoNextMs: Long = 8_000,
+    private val repeatMs: Long = 20_000,
 ) {
     var step = Step.IDLE
         private set
     private var lastHighwayAt = Long.MIN_VALUE / 2
     private var stepSince = 0L
+    private var lastSpokeAt = 0L
+    private var repeats = 0
     private var remindedPassengers = false
 
     fun update(s: CarState, now: Long): String? {
@@ -52,17 +55,25 @@ class StopGuide(
                 now - stepSince >= hazardAutoNextMs -> go(Step.TRUNK, now)
                 else -> null
             }
-            Step.TRUNK -> if (s.trunkOpen) go(Step.EVACUATE, now) else null
+            Step.TRUNK -> if (s.trunkOpen) go(Step.EVACUATE, now) else repeatIfIgnored(now)
             Step.EVACUATE -> when {
                 s.occupiedSeats == 0 -> go(Step.REPORT, now)
                 s.driverDoorOpen && s.occupiedSeats > 0 && !remindedPassengers -> {
                     remindedPassengers = true
+                    lastSpokeAt = now
                     "아직 차 안에 탑승자가 있습니다. 모두 함께 가드레일 밖으로 대피하세요."
                 }
-                else -> null
+                else -> repeatIfIgnored(now)
             }
             else -> null
         }
+    }
+
+    // 반응이 없으면 같은 안내를 최대 두 번 더 한다
+    private fun repeatIfIgnored(now: Long): String? {
+        if (repeats >= 2 || now - lastSpokeAt < repeatMs) return null
+        repeats++; lastSpokeAt = now
+        return SPEECH.getValue(step)
     }
 
     fun next(now: Long): String? = when (step) {
@@ -76,7 +87,7 @@ class StopGuide(
     fun reset() { step = Step.IDLE; remindedPassengers = false }
 
     private fun go(next: Step, now: Long): String {
-        step = next; stepSince = now
+        step = next; stepSince = now; lastSpokeAt = now; repeats = 0
         return SPEECH.getValue(next)
     }
 
