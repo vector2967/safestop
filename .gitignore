@@ -6,3 +6,6 @@ keystore.properties
 *.keystore
 *.iml
 .idea/
+.impeccable/
+PRODUCT.md
+DESIGN.md

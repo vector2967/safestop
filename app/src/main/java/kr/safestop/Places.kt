@@ -28,19 +28,26 @@ class Places(private val all: List<Place>) {
             .filter { heading == null || angleDiff(bearing(lat, lng, it.first.lat, it.first.lng), heading) < 60 }
             .minByOrNull { it.second }
 
-    fun describe(lat: Double, lng: Double, heading: Double? = null, maxM: Double = 30_000.0): String? {
+    data class Around(val road: String, val ahead: Pair<Place, Double>?, val behind: Pair<Place, Double>?)
+
+    // heading이 없으면 가장 가까운 시설 하나만 behind 자리에 둔다
+    fun around(lat: Double, lng: Double, heading: Double? = null, maxM: Double = 30_000.0): Around? {
         val near = all.map { it to distanceM(lat, lng, it.lat, it.lng) }.filter { it.second <= maxM }.sortedBy { it.second }
-        val (closest, closestM) = near.firstOrNull() ?: return null
-        val road = closest.route.removeSuffix("선") + "고속도로"
-        if (heading == null) return "$road ${label(closest)}에서 ${km(closestM)} 떨어진 곳"
-        val sameRoad = near.filter { it.first.route == closest.route }
+        val closest = near.firstOrNull() ?: return null
+        val road = closest.first.route.removeSuffix("선") + "고속도로"
+        if (heading == null) return Around(road, null, closest)
+        val sameRoad = near.filter { it.first.route == closest.first.route }
         fun ahead(p: Place) = angleDiff(bearing(lat, lng, p.lat, p.lng), heading) < 90
-        val front = sameRoad.firstOrNull { ahead(it.first) }
-        val back = sameRoad.firstOrNull { !ahead(it.first) }
+        return Around(road, sameRoad.firstOrNull { ahead(it.first) }, sameRoad.firstOrNull { !ahead(it.first) })
+    }
+
+    fun describe(lat: Double, lng: Double, heading: Double? = null, maxM: Double = 30_000.0): String? {
+        val a = around(lat, lng, heading, maxM) ?: return null
+        if (heading == null) return "${a.road} ${label(a.behind!!.first)}에서 ${km(a.behind.second)} 떨어진 곳"
         return listOfNotNull(
-            front?.let { "${label(it.first)} ${km(it.second)} 전" },
-            back?.let { "${label(it.first)}에서 ${km(it.second)} 지난 곳" },
-        ).joinToString(", ", prefix = "$road ")
+            a.ahead?.let { "${label(it.first)} ${km(it.second)} 전" },
+            a.behind?.let { "${label(it.first)}에서 ${km(it.second)} 지난 곳" },
+        ).joinToString(", ", prefix = "${a.road} ")
     }
 
     companion object {
@@ -50,7 +57,7 @@ class Places(private val all: List<Place>) {
             "rest" -> "휴게소"; "shelter" -> "졸음쉼터"; else -> "톨게이트"
         }
 
-        private fun km(m: Double) = "%.1fkm".format(m / 1000)
+        fun km(m: Double) = "%.1fkm".format(m / 1000)
 
         fun bearing(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
             val p1 = Math.toRadians(lat1); val p2 = Math.toRadians(lat2); val dl = Math.toRadians(lng2 - lng1)

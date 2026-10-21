@@ -53,6 +53,8 @@ object Guard {
 
     fun next() { guide.next(System.currentTimeMillis())?.let(say); onChange?.invoke() }
     fun cancel() { guide.reset(); onChange?.invoke() }
+    fun start() { guide.startManually(System.currentTimeMillis())?.let(say); onChange?.invoke() }
+    fun replay() { StopGuide.SPEECH[guide.step]?.let(say) }
 }
 
 class GuardService : Service() {
@@ -113,7 +115,7 @@ class GuardService : Service() {
     private fun onLocation(lat: Double, lng: Double, address: String?, heading: Double? = null) = set {
         location = Triple(lat, lng, heading)
         Guard.address = address ?: "%.5f, %.5f".format(lat, lng)
-        Guard.report = Report(places.describe(lat, lng, heading), lat, lng)
+        Guard.report = Report(places.describe(lat, lng, heading), lat, lng, places.around(lat, lng, heading))
         it.copy(nearStopZone = places.inStopZone(lat, lng))
     }
 
