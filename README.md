@@ -61,10 +61,10 @@ bash demo/scenario.sh
 ## 사용한 Pleos SDK · API
 | SDK | 용도 |
 |---|---|
-| Vehicle 2.3.2 | 기어, 도어·트렁크, 좌석 착좌, 에어백 전개, 배터리 SOC·연료 잔량 |
+| Vehicle 2.3.2 | 도어·트렁크, 좌석 착좌, 에어백 전개, 배터리 SOC·연료 잔량 |
 | NaviHelper 3.0.5 | 현재 위치·진행 방향(신고 위치 문구, 휴게소 판정), 도로 제한속도, 쉼터 경유지 추가 |
 | TextToSpeech 3.3.1 (ON_DEVICE) | 단계별 한국어 음성 안내 |
-| AAOS Car API | 차속(`PERF_VEHICLE_SPEED`), 주행 제한 대응(`distractionOptimized`) |
+| AAOS Car API | 차속(`PERF_VEHICLE_SPEED`), 기어(`GEAR_SELECTION`, Pleos 기어 API는 deprecated), 주행 제한 대응(`distractionOptimized`) |
 
 ## 빌드
 ```bash
