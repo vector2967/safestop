@@ -14,11 +14,10 @@ import ai.pleos.playground.vehicle.api.model.area.DoorArea
 import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.constant.area.DoorValue
 import ai.pleos.playground.vehicle.constant.area.SeatValue
-import ai.pleos.playground.vehicle.constant.control.VehicleGear
+import android.car.VehicleGear
 import ai.pleos.playground.vehicle.listener.DoorPositionListener
 import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
 import ai.pleos.playground.vehicle.listener.FuelPercentListener
-import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
 import android.app.Notification
@@ -149,18 +148,18 @@ class GuardService : Service() {
         if (checkSelfPermission(Car.PERMISSION_SPEED) != PackageManager.PERMISSION_GRANTED) return
         val c = Car.createCar(applicationContext).also { car = it }
         val cpm = c.getCarManager(Car.PROPERTY_SERVICE) as CarPropertyManager
-        cpm.registerCallback(object : CarPropertyManager.CarPropertyEventCallback {
-            override fun onChangeEvent(v: CarPropertyValue<*>) = set { it.copy(speedKmh = (v.value as Float) * 3.6f) }
+        val cb = object : CarPropertyManager.CarPropertyEventCallback {
+            override fun onChangeEvent(v: CarPropertyValue<*>) = when (v.propertyId) {
+                VehiclePropertyIds.PERF_VEHICLE_SPEED -> set { it.copy(speedKmh = (v.value as Float) * 3.6f) }
+                else -> set { it.copy(parkedOrNeutral = (v.value as Int) in setOf(VehicleGear.GEAR_PARK, VehicleGear.GEAR_NEUTRAL)) }
+            }
             override fun onErrorEvent(propertyId: Int, areaId: Int) {}
-        }, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
+        }
+        cpm.registerCallback(cb, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
+        cpm.registerCallback(cb, VehiclePropertyIds.GEAR_SELECTION, CarPropertyManager.SENSOR_RATE_ONCHANGE)
     }
 
     private fun listenVehicle() {
-        vehicle.getGear().registerGearSelection(object : GearSelectionListener {
-            override fun onSelected(g: VehicleGear?) =
-                set { it.copy(parkedOrNeutral = g == VehicleGear.GEAR_PARK || g == VehicleGear.GEAR_NEUTRAL) }
-            override fun onFailed(e: Exception) = fail(e)
-        })
         val door = vehicle.getDoor()
         door.registerDoorPosition(DoorArea(DoorValue.ROW_1_LEFT), object : DoorPositionListener {
             override fun onPositionUpdated(pos: Int?) = set { it.copy(driverDoorOpen = (pos ?: 0) > 0) }
