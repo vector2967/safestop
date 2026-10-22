@@ -62,12 +62,11 @@ class StepRow(ctx: Context, fonts: Fonts, number: Int, icon: Int, label: String)
 
     fun show(state: State) {
         val r = context.dp(8).toFloat()
-        val (bg, fg) = when (state) {
-            State.NOW -> Palette.glow to Palette.onColor
-            State.DONE -> Palette.raised to Palette.safe
-            State.WAITING -> Palette.raised to Palette.inkDim
+        val fg = when (state) {
+            State.NOW -> Palette.glow
+            State.DONE, State.WAITING -> Palette.inkDim
         }
-        background = rounded(bg, r)
+        background = if (state == State.NOW) rounded(Palette.raised, r, context.dp(4), Palette.glow) else rounded(Palette.raised, r)
         num.background = rounded(Color.TRANSPARENT, context.dp(26).toFloat(), context.dp(3), fg)
         num.setTextColor(fg); name.setTextColor(fg); pic.setColorFilter(fg)
         done.setColorFilter(Palette.safe)
@@ -102,19 +101,17 @@ class StripMap(ctx: Context, private val fonts: Fonts) : View(ctx) {
         val total = (back?.second ?: 0.0) + (ahead?.second ?: 0.0)
         val x = if (back != null && ahead != null && total > 0)
             left + (right - left) * (0.15f + 0.7f * (back.second / total).toFloat()) else (left + right) / 2
-        back?.let { mark(c, left + context.dp(8), y, it, Paint.Align.LEFT) }
-        ahead?.let { mark(c, right - context.dp(8), y, it, Paint.Align.RIGHT) }
+        back?.let { mark(c, left + context.dp(8), y, it, Paint.Align.LEFT, if (ahead != null) " 지남" else "") }
+        ahead?.let { mark(c, right - context.dp(8), y, it, Paint.Align.RIGHT, " 앞") }
         c.drawCircle(x, y, context.dp(22).toFloat(), halo)
         c.drawCircle(x, y, context.dp(12).toFloat(), dot)
         c.drawText("현재 위치", x, y - context.dp(30), here)
-        label.textAlign = Paint.Align.CENTER
-        c.drawText(a.road, x, y + context.dp(58), sub.apply { textAlign = Paint.Align.CENTER })
     }
 
-    private fun mark(c: Canvas, x: Float, y: Float, p: Pair<Place, Double>, align: Paint.Align) {
+    private fun mark(c: Canvas, x: Float, y: Float, p: Pair<Place, Double>, align: Paint.Align, side: String) {
         c.drawRect(x - context.dp(5), y - context.dp(16), x + context.dp(5), y + context.dp(16), tick)
         label.textAlign = align; sub.textAlign = align
         c.drawText(Places.label(p.first), x, y + context.dp(48), label)
-        c.drawText(Places.km(p.second), x, y + context.dp(78), sub)
+        c.drawText(Places.km(p.second) + side, x, y + context.dp(78), sub)
     }
 }

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.Uri
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -36,6 +37,8 @@ class MainActivity : Activity() {
     private lateinit var strip: StripMap
     private lateinit var qrBox: LinearLayout
     private lateinit var qr: ImageView
+    private lateinit var qrNote: TextView
+    private lateinit var place: TextView
     private lateinit var primary: Button
     private lateinit var secondary: Button
     private lateinit var end: Button
@@ -107,28 +110,32 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, dp(20), 0, 0)
             addView(qr, LinearLayout.LayoutParams(dp(220), dp(220)))
-            addView(text(24f, 600, Palette.ink).apply { text = "나가기 전에 휴대폰으로 찍기\n112 신고 문자가 준비됩니다"; gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
+            qrNote = text(24f, 600, Palette.ink).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
+            addView(qrNote)
         }
         if (wide) plate.addView(qrBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
         pic = ImageView(this)
         count = text(88f, 700, Palette.onColor).apply { gravity = Gravity.CENTER }
         val picFrame = FrameLayout(this).apply {
-            addView(pic, FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER))
+            addView(pic, FrameLayout.LayoutParams(dp(180), dp(180), Gravity.CENTER))
             addView(count, FrameLayout.LayoutParams(-1, -1))
         }
-        title = text(56f, 700, Palette.ink).apply { setLineSpacing(0f, 1.1f) }
+        title = text(64f, 700, Palette.ink).apply { setLineSpacing(0f, 1.1f) }
         body = text(30f, 500, Palette.inkDim).apply { setLineSpacing(0f, 1.25f) }
-        alert = text(30f, 700, Palette.onColor).apply { setPadding(dp(24), dp(16), dp(24), dp(16)) }
+        alert = text(40f, 700, Palette.onColor).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(28), dp(24), dp(28), dp(24)) }
+        place = text(32f, 600, Palette.ink)
         strip = StripMap(this, f)
         main = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(if (wide) 40 else 8), dp(8), dp(8), 0)
-            addView(picFrame, LinearLayout.LayoutParams(dp(180), dp(180)))
+            addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
+            addView(alert, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
+            addView(picFrame, LinearLayout.LayoutParams(dp(220), dp(220)))
             addView(title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(body, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-            addView(alert, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(20) })
             addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
+            addView(place, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
             addView(strip, LinearLayout.LayoutParams(-1, -2))
             if (!wide) addView(qrBox, LinearLayout.LayoutParams(-1, -2))
         }
@@ -149,9 +156,8 @@ class MainActivity : Activity() {
             setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_replay, 0, 0, 0)
             compoundDrawablePadding = dp(12); compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Palette.ink)
         }
-        end = button(Color.TRANSPARENT, Palette.inkDim, 600) {
-            end.text = "길게 눌러 종료"
-        }.apply {
+        end = button(Color.TRANSPARENT, Palette.inkDim, 600) {}.apply {
+            text = "길게 눌러 종료"; background = rounded(Color.TRANSPARENT, dp(16).toFloat(), dp(2), Palette.hairline)
             setOnLongClickListener { Guard.cancel(); true }
         }
         val actions = LinearLayout(this).apply {
@@ -169,6 +175,8 @@ class MainActivity : Activity() {
 
     private fun onPrimary() = when (Guard.guide.step) {
         Step.IDLE -> Guard.start()
+        // 전화 앱이 없는 환경에서는 조용히 무시
+        Step.REPORT -> runCatching { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))) }.let {}
         else -> Guard.next()
     }
 
@@ -194,7 +202,7 @@ class MainActivity : Activity() {
             row.show(when {
                 at < 0 -> StepRow.State.WAITING
                 i < at -> StepRow.State.DONE
-                i == at -> if (step == Step.REPORT) StepRow.State.DONE else StepRow.State.NOW
+                i == at -> StepRow.State.NOW
                 else -> StepRow.State.WAITING
             })
         }
@@ -215,22 +223,29 @@ class MainActivity : Activity() {
         val left = s.occupiedSeats
         alert.visibility = if (step == Step.EVACUATE && left > 0) View.VISIBLE else View.GONE
         alert.text = "차 안에 아직 ${left}명 있어요"
+        val stillInside = step == Step.EVACUATE && left > 0
         alert.background = rounded(Palette.danger, dp(16).toFloat())
 
         strip.around = Guard.report?.around
         strip.visibility = if (strip.around != null && step in setOf(Step.IDLE, Step.REPORT)) View.VISIBLE else View.GONE
+        place.text = Guard.report?.where
+        place.visibility = if (step == Step.REPORT && Guard.report != null) View.VISIBLE else View.GONE
 
-        val report = Guard.report.takeIf { step in setOf(Step.HAZARD, Step.TRUNK, Step.REPORT) }
+        val report = Guard.report.takeIf { step in setOf(Step.TRUNK, Step.REPORT) }
         qrBox.visibility = if (report == null) View.GONE else View.VISIBLE
+        qrNote.text = if (step == Step.TRUNK) "내리기 전에 휴대폰으로 찍기" else "찍으면 112 신고 문자"
         if (report != null && report.sms != qrFor) { qr.setImageBitmap(report.qr(dp(220))); qrFor = report.sms }
 
-        primary.visibility = if (idle && s.speedKmh >= 1f || step == Step.REPORT) View.GONE else View.VISIBLE
-        primary.text = when (step) { Step.IDLE -> "대피 안내 시작"; Step.CONFIRM -> "지금 시작"; else -> "다음 단계" }
+        primary.visibility = if (idle && s.speedKmh >= 1f) View.GONE else View.VISIBLE
+        primary.text = when (step) { Step.IDLE -> "대피 안내 시작"; Step.CONFIRM -> "지금 시작"; Step.REPORT -> "112 전화"; else -> if (stillInside) "모두 나왔어요" else "다음 단계" }
+        // 사람이 남아 있으면 넘기기 버튼을 눈에 띄지 않게 해 성급한 진행을 막는다
+        primary.background = rounded(if (stillInside) Palette.pressed else Palette.glow, dp(16).toFloat())
+        primary.setTextColor(if (stillInside) Palette.ink else Palette.onColor)
+        (secondary.layoutParams as LinearLayout.LayoutParams).marginStart = if (primary.visibility == View.VISIBLE) dp(24) else 0
         secondary.visibility = if (idle) View.GONE else View.VISIBLE
         secondary.text = if (confirming) "정상 정차예요" else "다시 듣기"
         secondary.setCompoundDrawablesRelativeWithIntrinsicBounds(if (confirming) 0 else R.drawable.ic_replay, 0, 0, 0)
         end.visibility = if (idle || confirming) View.GONE else View.VISIBLE
-        if (end.visibility == View.VISIBLE && shownStep != step) end.text = "안내 종료"
 
         if (shownStep != null && shownStep != step) {
             if (ValueAnimator.areAnimatorsEnabled()) {
@@ -244,10 +259,10 @@ class MainActivity : Activity() {
     private fun copy(step: Step) = when (step) {
         Step.IDLE -> Triple(R.drawable.ic_road, "고속도로 정차 감시 중", "차가 고속도로에 멈추면 대피 순서를 음성으로 안내합니다.")
         Step.CONFIRM -> Triple(R.drawable.ic_hazard, "고속도로 정차를 감지했어요", "잠시 뒤 대피 안내를 시작합니다.")
-        Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "뒤차가 멀리서도 볼 수 있게 지금 바로 켜세요.")
+        Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "뒤차가 멀리서도 볼 수 있게.")
         Step.TRUNK -> Triple(R.drawable.ic_trunk, "트렁크를 여세요", "열린 트렁크가 뒤차에 정차를 알려 줍니다.")
-        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 뒤쪽이 아닌 가드레일 너머로, 모두 함께.")
-        Step.REPORT -> Triple(R.drawable.ic_check, "모두 대피했어요", "112 또는 1588-2504(무료 긴급견인)에 신고하세요.")
+        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 뒤쪽 말고 가드레일 너머로.")
+        Step.REPORT -> Triple(R.drawable.ic_check, "112에 신고하세요", "견인은 1588-2504(무료).")
     }
 
     private fun text(size: Float, weight: Int, color: Int) = TextView(this).style(f, size, weight, color)
