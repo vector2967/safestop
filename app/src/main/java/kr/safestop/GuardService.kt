@@ -4,6 +4,7 @@ import ai.pleos.playground.navi.constants.TurnType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
+import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.TBTInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
@@ -74,7 +75,7 @@ class GuardService : Service() {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private val fail: (Exception) -> Unit = { e -> Log.w(TAG, "vehicle: ${e.message}"); problem("차량 신호 일부를 읽지 못했습니다.") }
-    private fun problem(what: String) = main.post { Guard.problems += what; Guard.onChange?.invoke() }
+    private fun problem(what: String) = main.post { Log.w(TAG, "problem: $what"); Guard.problems += what; Guard.onChange?.invoke() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -114,6 +115,9 @@ class GuardService : Service() {
         intent?.getStringExtra(FAKE_LOCATION)?.takeIf { debuggable }?.split(',')?.map(String::toDouble)?.let { v ->
             fakeLocation = true
             onLocation(v[0], v[1], "%.5f, %.5f (테스트 위치)".format(v[0], v[1]), v.getOrNull(2))
+        }
+        intent?.getStringExtra(ROUTE)?.takeIf { debuggable }?.split(',')?.map(String::toDouble)?.let { v ->
+            navi?.requestRoute(RouteInfo(latitude = v[0], longitude = v[1], poiName = "테스트 목적지", poiId = "", address = "", poiSubId = "0"))
         }
         if (intent?.action == ACTION_ADD_WAYPOINT) navi?.addWaypoint(RequestWaypointInfo(
             intent.getDoubleExtra("lat", 0.0), intent.getDoubleExtra("lng", 0.0),
@@ -227,9 +231,7 @@ class GuardService : Service() {
             }
             override fun onCurrentRoadSpeedLimit(speedLimit: Int) = set { it.copy(speedLimitKmh = speedLimit) }
             // 경로 안내 중이면 톨게이트·휴게소 진입을 TBT로 알 수 있다(톨게이트 좌표 데이터 대신)
-            override fun onTBTInfo(list: List<TBTInfo>) = set { s ->
-                s.copy(naviStopZone = list.firstOrNull()?.let { it.type in NAVI_STOP_TURNS && it.distance <= 500 } == true)
-            }
+            override fun onTBTInfo(list: List<TBTInfo>) = set { it.copy(naviStopZone = stopZoneAhead(list)) }
         }
         n.initialize({ n.addListener(l); n.getCurrentLocationInfo() }, { t -> Log.w(TAG, "navi: $t"); problem("내비 위치를 받지 못해 신고 위치를 알 수 없습니다.") })
     }
@@ -288,17 +290,24 @@ class GuardService : Service() {
         const val STATUS_CHANNEL = "status"
         const val ALERT_CHANNEL = "alert"
         const val PREFS = "guard"
-        const val NO_SPEED = "차속 권한이 없어 정차를 감지할 수 없습니다. 정차 중에 앱을 다시 열어 권한을 허용하세요(시스템 창에는 '위치 정보'로 표시됩니다)."
+        const val NO_SPEED = "차속 권한이 없어 정차를 감지할 수 없습니다."
         val NAVI_STOP_TURNS = setOf(TurnType.TURN_TOLL, TurnType.TURN_RESTAREA, TurnType.TURN_ENTER_SERVICEAREA)
+
+        // 에뮬레이터 실측: TBT distance는 앞 안내 지점부터의 구간 거리라 누적해서 본다
+        fun stopZoneAhead(list: List<TBTInfo>, withinM: Double = 500.0): Boolean {
+            var ahead = 0.0
+            return list.any { ahead += it.distance; it.type in NAVI_STOP_TURNS && ahead <= withinM }
+        }
         const val RESUME_MS = 10 * 60_000L
         // 에뮬레이터 v2.1.0 실측: 착좌 값이 Virtual Console과 반대로 온다. 실차 확인 필요
         const val SDK_OCCUPIED = false
 
         fun start(context: Context, from: Intent? = null) = context.startForegroundService(
-            Intent(context, GuardService::class.java).apply { from?.getStringExtra(FAKE_LOCATION)?.let { putExtra(FAKE_LOCATION, it) } })
+            Intent(context, GuardService::class.java).apply { from?.extras?.let(::putExtras) })
 
         // 에뮬레이터 내비가 GPS 주입을 따르지 않아 디버그 빌드에서만 위치 주입 허용
         const val FAKE_LOCATION = "fake_location"
+        const val ROUTE = "route"
         const val ACTION_ADD_WAYPOINT = "kr.safestop.ADD_WAYPOINT"
     }
 }

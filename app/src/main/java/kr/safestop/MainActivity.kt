@@ -49,9 +49,6 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         f = Fonts(this)
         buildUi()
-        val missing = arrayOf(Car.PERMISSION_SPEED, Manifest.permission.POST_NOTIFICATIONS)
-            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
         GuardService.start(this, intent)
     }
 
@@ -62,7 +59,12 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<String>, results: IntArray) {
         GuardService.start(this)
+        render()
     }
+
+    // 시스템 권한 창은 차속을 "위치 정보"로 보여 주고 주행 중에는 열리지 않아서, 먼저 이유를 설명하고 버튼으로 요청한다
+    private fun missingPermissions() = arrayOf(Car.PERMISSION_SPEED, Manifest.permission.POST_NOTIFICATIONS)
+        .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
 
     // 멀티 윈도우에서는 보이는 채로 pause되므로 start/stop 기준으로 구독한다
     override fun onStart() {
@@ -174,7 +176,7 @@ class MainActivity : Activity() {
     }
 
     private fun onPrimary() = when (Guard.guide.step) {
-        Step.IDLE -> Guard.start()
+        Step.IDLE -> missingPermissions().takeIf { it.isNotEmpty() }?.let { requestPermissions(it.toTypedArray(), 1) } ?: Guard.start()
         // 전화 앱이 없는 환경에서는 조용히 무시
         Step.REPORT -> runCatching { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))) }.let {}
         else -> Guard.next()
@@ -186,9 +188,10 @@ class MainActivity : Activity() {
         val s = Guard.state
         val step = Guard.guide.step
         val idle = step == Step.IDLE
+        val asking = idle && missingPermissions().isNotEmpty()
 
         val (bandText, bandColor, bandInk) = when (step) {
-            Step.IDLE -> if (Guard.problems.isEmpty()) Triple("●  감시 중", Palette.raised, Palette.glow)
+            Step.IDLE -> if (Guard.problems.isEmpty() && !asking) Triple("●  감시 중", Palette.raised, Palette.glow)
                 else Triple("!  점검 필요", Palette.caution, Palette.onColor)
             Step.CONFIRM -> Triple("정차 감지", Palette.caution, Palette.onColor)
             Step.REPORT -> Triple("대피 완료", Palette.safe, Palette.onColor)
@@ -218,8 +221,8 @@ class MainActivity : Activity() {
             count.text = Guard.guide.confirmLeftSec(System.currentTimeMillis()).toString()
             count.background = rounded(Palette.caution, dp(90).toFloat())
         }
-        title.text = t
-        body.text = Guard.problems.takeIf { idle && it.isNotEmpty() }?.joinToString("\n")
+        title.text = if (asking) "권한을 허용해 주세요" else t
+        body.text = PERMISSION_WHY.takeIf { asking } ?: Guard.problems.takeIf { idle && it.isNotEmpty() }?.joinToString("\n")
             ?: Guard.advice.takeIf { idle } ?: b
 
         val left = s.occupiedSeats
@@ -239,7 +242,7 @@ class MainActivity : Activity() {
         if (report != null && report.sms != qrFor) { qr.setImageBitmap(report.qr(dp(220))); qrFor = report.sms }
 
         primary.visibility = if (idle && s.speedKmh >= 1f) View.GONE else View.VISIBLE
-        primary.text = when (step) { Step.IDLE -> "대피 안내 시작"; Step.CONFIRM -> "지금 시작"; Step.REPORT -> "112 전화"; else -> if (stillInside) "모두 나왔어요" else "다음 단계" }
+        primary.text = when (step) { Step.IDLE -> if (asking) "권한 허용하기" else "대피 안내 시작"; Step.CONFIRM -> "지금 시작"; Step.REPORT -> "112 전화"; else -> if (stillInside) "모두 나왔어요" else "다음 단계" }
         // 사람이 남아 있으면 넘기기 버튼을 눈에 띄지 않게 해 성급한 진행을 막는다
         primary.background = rounded(if (stillInside) Palette.pressed else Palette.glow, dp(16).toFloat())
         primary.setTextColor(if (stillInside) Palette.ink else Palette.onColor)
@@ -263,7 +266,7 @@ class MainActivity : Activity() {
         Step.CONFIRM -> Triple(R.drawable.ic_hazard, "고속도로 정차를 감지했어요", "잠시 뒤 대피 안내를 시작합니다.")
         Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "대시보드 가운데에 있는 빨간 삼각형 버튼을 누르세요.")
         Step.TRUNK -> Triple(R.drawable.ic_trunk, "트렁크를 여세요", "트렁크를 열어 두면 뒤차가 고장 차량인 것을 멀리서 알아봅니다.")
-        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 앞뒤에 서 있지 말고 가드레일을 넘어 도로 바깥에서 기다리세요.")
+        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 앞뒤에 서 있지 말고 가드레일을 넘어 도로 바깥에서 기다리세요. 터널 안이면 초록 유도등을 따라 비상구로 나가세요.")
         Step.REPORT -> Triple(R.drawable.ic_check, "112에 신고하세요", "한국도로공사 1588-2504에 전화하면 가까운 안전지대까지 무료로 견인해 줍니다.")
     }
 
@@ -282,6 +285,8 @@ class MainActivity : Activity() {
         }
     }
 }
+
+private const val PERMISSION_WHY = "정차를 감지하려면 차량 속도를, 화면을 띄우려면 알림을 써야 합니다. 차량 속도는 시스템 창에 '위치 정보'로 표시됩니다. 주행 중에는 창이 열리지 않으니 정차한 뒤 눌러 주세요."
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) { GuardService.start(context) }
