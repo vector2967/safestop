@@ -49,7 +49,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         f = Fonts(this)
         buildUi()
-        val missing = arrayOf(Car.PERMISSION_SPEED, Manifest.permission.POST_NOTIFICATIONS)
+        val missing = arrayOf(Car.PERMISSION_SPEED, Car.PERMISSION_READ_STEERING_STATE, Manifest.permission.POST_NOTIFICATIONS)
             .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
         GuardService.start(this, intent)
@@ -188,7 +188,8 @@ class MainActivity : Activity() {
         val idle = step == Step.IDLE
 
         val (bandText, bandColor, bandInk) = when (step) {
-            Step.IDLE -> Triple("●  감시 중", Palette.raised, Palette.glow)
+            Step.IDLE -> if (Guard.problems.isEmpty()) Triple("●  감시 중", Palette.raised, Palette.glow)
+                else Triple("!  점검 필요", Palette.caution, Palette.onColor)
             Step.CONFIRM -> Triple("정차 감지", Palette.caution, Palette.onColor)
             Step.REPORT -> Triple("대피 완료", Palette.safe, Palette.onColor)
             else -> Triple("대피 안내 중", Palette.danger, Palette.onColor)
@@ -218,7 +219,8 @@ class MainActivity : Activity() {
             count.background = rounded(Palette.caution, dp(90).toFloat())
         }
         title.text = t
-        body.text = Guard.advice.takeIf { idle } ?: b
+        body.text = Guard.problems.takeIf { idle && it.isNotEmpty() }?.joinToString("\n")
+            ?: Guard.advice.takeIf { idle } ?: b
 
         val left = s.occupiedSeats
         alert.visibility = if (step == Step.EVACUATE && left > 0) View.VISIBLE else View.GONE

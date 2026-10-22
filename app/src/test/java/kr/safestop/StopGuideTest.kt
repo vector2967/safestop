@@ -90,4 +90,27 @@ class StopGuideTest {
         g.update(CarState(parkedOrNeutral = true), 80_000)
         assertEquals(Step.CONFIRM, g.step)
     }
+
+    @Test fun pullOverInDriveTriggers() {
+        g.update(CarState(speedKmh = 100f), 0)
+        g.update(CarState(speedKmh = 90f, rightSignal = true), 1_000)
+        g.update(CarState(speedKmh = 40f, steeringDeg = 2f), 10_000)
+        assertNotNull(g.update(CarState(speedKmh = 0f), 20_000))
+        assertEquals(Step.CONFIRM, g.step)
+    }
+
+    @Test fun leftOrOldRightCueInDriveDoesNotTrigger() {
+        g.update(CarState(speedKmh = 100f, steeringDeg = -3f), 0)
+        assertNull(g.update(CarState(speedKmh = 0f), 10_000))
+        g.update(CarState(speedKmh = 100f, rightSignal = true), 20_000)
+        g.update(CarState(speedKmh = 30f), 40_000)
+        assertNull(g.update(CarState(speedKmh = 0f), 60_000))
+    }
+
+    @Test fun restoredStepContinues() {
+        g.restore(Step.TRUNK, 0)
+        assertEquals(Step.TRUNK, g.step)
+        g.update(CarState(parkedOrNeutral = true, trunkOpen = true), 1_000)
+        assertEquals(Step.EVACUATE, g.step)
+    }
 }

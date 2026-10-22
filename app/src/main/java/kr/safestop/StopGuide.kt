@@ -13,6 +13,8 @@ data class CarState(
     val nearStopZone: Boolean = false,
     val socPct: Int? = null,
     val fuelPct: Int? = null,
+    val rightSignal: Boolean = false,
+    val steeringDeg: Float = 0f,
 )
 
 class StopGuide(
@@ -21,6 +23,7 @@ class StopGuide(
     private val confirmMs: Long = 5_000,
     private val hazardAutoNextMs: Long = 8_000,
     private val repeatMs: Long = 20_000,
+    private val pullOverMs: Long = 30_000,
 ) {
     var step = Step.IDLE
         private set
@@ -30,14 +33,19 @@ class StopGuide(
     private var repeats = 0
     private var remindedPassengers = false
     private var armed = true
+    private var pullOverCueAt = Long.MIN_VALUE / 2
 
     fun update(s: CarState, now: Long): String? {
         if (s.speedKmh >= highwaySpeedKmh || s.speedLimitKmh >= 100) lastHighwayAt = now
         val onHighway = now - lastHighwayAt <= highwayMemoryMs
+        // PERF_STEERING_ANGLE은 바퀴 각도(왼쪽 음수). 고속 차로 변경이 1도 안팎이라 1도로 둔다
+        if (s.speedKmh >= 60f && (s.rightSignal || s.steeringDeg >= 1f)) pullOverCueAt = now
 
         if (step == Step.IDLE) {
             if (s.speedKmh >= 10f && !s.parkedOrNeutral) armed = true
-            val stopped = s.speedKmh < 1f && (s.parkedOrNeutral || s.driverDoorOpen)
+            // 고속에서 우측으로 빠지며 30초 안에 멈추면 D단이어도 갓길 정차로 본다(정체와 구분)
+            val pulledOver = now - pullOverCueAt <= pullOverMs
+            val stopped = s.speedKmh < 1f && (s.parkedOrNeutral || s.driverDoorOpen || pulledOver)
             return when {
                 s.airbagDeployed -> go(Step.HAZARD, now)
                 // 휴게소·졸음쉼터 정차는 정상 정차
@@ -90,6 +98,9 @@ class StopGuide(
     fun startManually(now: Long): String? = if (step == Step.IDLE) go(Step.HAZARD, now) else null
 
     fun confirmLeftSec(now: Long) = ((confirmMs - (now - stepSince) + 999) / 1000).coerceAtLeast(0)
+
+    // 서비스가 재시작돼도 진행 중이던 단계를 잇는다
+    fun restore(saved: Step, since: Long) { if (step == Step.IDLE) { step = saved; stepSince = since; lastSpokeAt = since } }
 
     fun reset() { step = Step.IDLE; remindedPassengers = false }
 

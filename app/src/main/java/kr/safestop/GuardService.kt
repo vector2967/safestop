@@ -14,12 +14,14 @@ import ai.pleos.playground.vehicle.api.model.area.DoorArea
 import ai.pleos.playground.vehicle.api.model.area.SeatArea
 import ai.pleos.playground.vehicle.constant.area.DoorValue
 import ai.pleos.playground.vehicle.constant.area.SeatValue
+import ai.pleos.playground.vehicle.constant.area.TurnSignalValue
 import android.car.VehicleGear
 import ai.pleos.playground.vehicle.listener.DoorPositionListener
 import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
 import ai.pleos.playground.vehicle.listener.FuelPercentListener
 import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
+import ai.pleos.playground.vehicle.listener.TurnSignalStateListener
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -47,6 +49,7 @@ object Guard {
     var address: String? = null
     var report: Report? = null
     var advice: String? = null
+    val problems = sortedSetOf<String>()
     val advisor = Advisor()
     var onChange: (() -> Unit)? = null
     var say: (String) -> Unit = {}
@@ -66,7 +69,8 @@ class GuardService : Service() {
     private var navi: NaviHelper? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private val fail: (Exception) -> Unit = { e -> Log.w(TAG, "vehicle: ${e.message}") }
+    private val fail: (Exception) -> Unit = { e -> Log.w(TAG, "vehicle: ${e.message}"); problem("차량 신호 일부를 읽지 못했습니다.") }
+    private fun problem(what: String) = main.post { Guard.problems += what; Guard.onChange?.invoke() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -76,6 +80,10 @@ class GuardService : Service() {
         places = runCatching { Places.parse(assets.open("highway_places.csv").bufferedReader().readText()) }
             .getOrElse { Places(emptyList()) }
         Guard.say = ::say
+        val saved = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val since = saved.getLong("since", 0)
+        if (System.currentTimeMillis() - since < RESUME_MS)
+            saved.getString("step", null)?.let { Guard.guide.restore(Step.valueOf(it), since) }
         vehicle = Vehicle(applicationContext).also { it.initialize() }
         listenVehicle()
         listenNavi()
@@ -88,7 +96,7 @@ class GuardService : Service() {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     ttsReady = true
                 }
-                override fun onFailure(errorType: ErrorType) { Log.w(TAG, "tts: $errorType") }
+                override fun onFailure(errorType: ErrorType) { Log.w(TAG, "tts: $errorType"); problem("음성 안내를 쓸 수 없어 화면으로만 안내합니다.") }
             })
         }
         listenSpeed()
@@ -147,18 +155,22 @@ class GuardService : Service() {
     }
 
     private fun listenSpeed() {
-        if (checkSelfPermission(Car.PERMISSION_SPEED) != PackageManager.PERMISSION_GRANTED) return
+        if (checkSelfPermission(Car.PERMISSION_SPEED) != PackageManager.PERMISSION_GRANTED) { problem(NO_SPEED); return }
+        main.post { Guard.problems -= NO_SPEED }
         val c = Car.createCar(applicationContext).also { car = it }
         val cpm = c.getCarManager(Car.PROPERTY_SERVICE) as CarPropertyManager
         val cb = object : CarPropertyManager.CarPropertyEventCallback {
             override fun onChangeEvent(v: CarPropertyValue<*>) = when (v.propertyId) {
                 VehiclePropertyIds.PERF_VEHICLE_SPEED -> set { it.copy(speedKmh = (v.value as Float) * 3.6f) }
+                VehiclePropertyIds.PERF_STEERING_ANGLE -> set { it.copy(steeringDeg = v.value as Float) }
                 else -> set { it.copy(parkedOrNeutral = (v.value as Int) in setOf(VehicleGear.GEAR_PARK, VehicleGear.GEAR_NEUTRAL)) }
             }
             override fun onErrorEvent(propertyId: Int, areaId: Int) {}
         }
         cpm.registerCallback(cb, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
         cpm.registerCallback(cb, VehiclePropertyIds.GEAR_SELECTION, CarPropertyManager.SENSOR_RATE_ONCHANGE)
+        if (checkSelfPermission(Car.PERMISSION_READ_STEERING_STATE) == PackageManager.PERMISSION_GRANTED)
+            cpm.registerCallback(cb, VehiclePropertyIds.PERF_STEERING_ANGLE, CarPropertyManager.SENSOR_RATE_NORMAL)
     }
 
     private fun listenVehicle() {
@@ -169,6 +181,10 @@ class GuardService : Service() {
         })
         door.registerDoorPosition(DoorArea(DoorValue.REAR), object : DoorPositionListener {
             override fun onPositionUpdated(pos: Int?) = set { it.copy(trunkOpen = (pos ?: 0) > 0) }
+            override fun onFailed(e: Exception) = fail(e)
+        })
+        vehicle.getTurnSignal().registerTurnSignalState(object : TurnSignalStateListener {
+            override fun onTurnSignalStateUpdated(value: TurnSignalValue?) = set { it.copy(rightSignal = value == TurnSignalValue.RIGHT) }
             override fun onFailed(e: Exception) = fail(e)
         })
         val seat = vehicle.getSeat()
@@ -203,7 +219,7 @@ class GuardService : Service() {
             }
             override fun onCurrentRoadSpeedLimit(speedLimit: Int) = set { it.copy(speedLimitKmh = speedLimit) }
         }
-        n.initialize({ n.addListener(l); n.getCurrentLocationInfo() }, { t -> Log.w(TAG, "navi: $t") })
+        n.initialize({ n.addListener(l); n.getCurrentLocationInfo() }, { t -> Log.w(TAG, "navi: $t"); problem("내비 위치를 받지 못해 신고 위치를 알 수 없습니다.") })
     }
 
     // 리스너는 바인더 스레드에서 호출된다
@@ -222,6 +238,8 @@ class GuardService : Service() {
         Guard.guide.update(Guard.state, now)?.let(::say)
         if (Guard.guide.step == Step.IDLE) Guard.advisor.update(Guard.state, now)?.let(::advise)
         if (before == Step.IDLE && Guard.guide.step != Step.IDLE) showGuide()
+        if (before != Guard.guide.step) getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putString("step", Guard.guide.step.name).putLong("since", now).apply()
         Guard.onChange?.invoke()
     }
 
@@ -255,6 +273,9 @@ class GuardService : Service() {
         const val TAG = "SafeStop"
         const val STATUS_CHANNEL = "status"
         const val ALERT_CHANNEL = "alert"
+        const val PREFS = "guard"
+        const val NO_SPEED = "차속 권한이 없어 정차를 감지할 수 없습니다. 앱을 다시 열어 권한을 허용하세요."
+        const val RESUME_MS = 10 * 60_000L
         // 에뮬레이터 v2.1.0 실측: 착좌 값이 Virtual Console과 반대로 온다. 실차 확인 필요
         const val SDK_OCCUPIED = false
 
