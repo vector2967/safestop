@@ -1,8 +1,10 @@
 package kr.safestop
 
+import ai.pleos.playground.navi.constants.TurnType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
+import ai.pleos.playground.navi.data.TBTInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.tts.TextToSpeech
@@ -21,6 +23,7 @@ import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
 import ai.pleos.playground.vehicle.listener.FuelPercentListener
 import ai.pleos.playground.vehicle.listener.SeatAirbagDeployedListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
+import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
 import ai.pleos.playground.vehicle.listener.TurnSignalStateListener
 import android.app.Notification
 import android.app.NotificationChannel
@@ -49,6 +52,7 @@ object Guard {
     var address: String? = null
     var report: Report? = null
     var advice: String? = null
+    var adviceKind: Advice? = null
     val problems = sortedSetOf<String>()
     val advisor = Advisor()
     var onChange: (() -> Unit)? = null
@@ -138,7 +142,8 @@ class GuardService : Service() {
             Advice.LONG_DRIVE -> "두 시간 넘게 운전하셨습니다. 갓길이 아닌 %.0f킬로미터 앞 %s에서 쉬어 가세요."
         }.format(m / 1000, name)
         say(text)
-        Guard.advice = text
+        Guard.advice = text.replace("킬로미터", "km")
+        Guard.adviceKind = advice
         val add = PendingIntent.getForegroundService(this, 3, Intent(this, GuardService::class.java)
             .setAction(ACTION_ADD_WAYPOINT).putExtra("lat", place.lat).putExtra("lng", place.lng).putExtra("name", name),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -162,15 +167,12 @@ class GuardService : Service() {
         val cb = object : CarPropertyManager.CarPropertyEventCallback {
             override fun onChangeEvent(v: CarPropertyValue<*>) = when (v.propertyId) {
                 VehiclePropertyIds.PERF_VEHICLE_SPEED -> set { it.copy(speedKmh = (v.value as Float) * 3.6f) }
-                VehiclePropertyIds.PERF_STEERING_ANGLE -> set { it.copy(steeringDeg = v.value as Float) }
                 else -> set { it.copy(parkedOrNeutral = (v.value as Int) in setOf(VehicleGear.GEAR_PARK, VehicleGear.GEAR_NEUTRAL)) }
             }
             override fun onErrorEvent(propertyId: Int, areaId: Int) {}
         }
         cpm.registerCallback(cb, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
         cpm.registerCallback(cb, VehiclePropertyIds.GEAR_SELECTION, CarPropertyManager.SENSOR_RATE_ONCHANGE)
-        if (checkSelfPermission(Car.PERMISSION_READ_STEERING_STATE) == PackageManager.PERMISSION_GRANTED)
-            cpm.registerCallback(cb, VehiclePropertyIds.PERF_STEERING_ANGLE, CarPropertyManager.SENSOR_RATE_NORMAL)
     }
 
     private fun listenVehicle() {
@@ -184,7 +186,13 @@ class GuardService : Service() {
             override fun onFailed(e: Exception) = fail(e)
         })
         vehicle.getTurnSignal().registerTurnSignalState(object : TurnSignalStateListener {
+            // 에뮬레이터 실측: 비상등을 켜도 지시등 값은 바뀌지 않는다(비상등 감지 불가)
             override fun onTurnSignalStateUpdated(value: TurnSignalValue?) = set { it.copy(rightSignal = value == TurnSignalValue.RIGHT) }
+            override fun onFailed(e: Exception) = fail(e)
+        })
+        // AAOS PERF_STEERING_ANGLE은 signature 권한이라 Pleos SDK(CAR_DRIVE)로 읽는다
+        vehicle.getSteeringWheel().registerSteeringWheelAngle(object : SteeringWheelAngleListener {
+            override fun onSteeringWheelAngleUpdated(deg: Float?) = set { it.copy(steeringDeg = deg ?: 0f) }
             override fun onFailed(e: Exception) = fail(e)
         })
         val seat = vehicle.getSeat()
@@ -218,6 +226,10 @@ class GuardService : Service() {
                 if (!fakeLocation) onLocation(info.latitude, info.longitude, info.address, info.heading)
             }
             override fun onCurrentRoadSpeedLimit(speedLimit: Int) = set { it.copy(speedLimitKmh = speedLimit) }
+            // 경로 안내 중이면 톨게이트·휴게소 진입을 TBT로 알 수 있다(톨게이트 좌표 데이터 대신)
+            override fun onTBTInfo(list: List<TBTInfo>) = set { s ->
+                s.copy(naviStopZone = list.firstOrNull()?.let { it.type in NAVI_STOP_TURNS && it.distance <= 500 } == true)
+            }
         }
         n.initialize({ n.addListener(l); n.getCurrentLocationInfo() }, { t -> Log.w(TAG, "navi: $t"); problem("내비 위치를 받지 못해 신고 위치를 알 수 없습니다.") })
     }
@@ -237,7 +249,9 @@ class GuardService : Service() {
         val now = System.currentTimeMillis()
         Guard.guide.update(Guard.state, now)?.let(::say)
         if (Guard.guide.step == Step.IDLE) Guard.advisor.update(Guard.state, now)?.let(::advise)
+        Guard.adviceKind?.takeUnless { Guard.advisor.stillValid(it, Guard.state) }?.let { Guard.advice = null; Guard.adviceKind = null }
         if (before == Step.IDLE && Guard.guide.step != Step.IDLE) showGuide()
+        if (before != Guard.guide.step) Log.i(TAG, "step $before -> ${Guard.guide.step}")
         if (before != Guard.guide.step) getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putString("step", Guard.guide.step.name).putLong("since", now).apply()
         Guard.onChange?.invoke()
@@ -274,7 +288,8 @@ class GuardService : Service() {
         const val STATUS_CHANNEL = "status"
         const val ALERT_CHANNEL = "alert"
         const val PREFS = "guard"
-        const val NO_SPEED = "차속 권한이 없어 정차를 감지할 수 없습니다. 앱을 다시 열어 권한을 허용하세요."
+        const val NO_SPEED = "차속 권한이 없어 정차를 감지할 수 없습니다. 정차 중에 앱을 다시 열어 권한을 허용하세요(시스템 창에는 '위치 정보'로 표시됩니다)."
+        val NAVI_STOP_TURNS = setOf(TurnType.TURN_TOLL, TurnType.TURN_RESTAREA, TurnType.TURN_ENTER_SERVICEAREA)
         const val RESUME_MS = 10 * 60_000L
         // 에뮬레이터 v2.1.0 실측: 착좌 값이 Virtual Console과 반대로 온다. 실차 확인 필요
         const val SDK_OCCUPIED = false

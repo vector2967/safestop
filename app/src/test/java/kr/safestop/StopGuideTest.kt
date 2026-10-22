@@ -99,8 +99,23 @@ class StopGuideTest {
         assertEquals(Step.CONFIRM, g.step)
     }
 
+    @Test fun outOfEnergyStopInDriveTriggers() {
+        g.update(CarState(speedKmh = 100f, socPct = 2), 0)
+        assertNotNull(g.update(CarState(speedKmh = 0f, socPct = 2), 30_000))
+    }
+
+    @Test fun naviTollOrRestAreaStopDoesNotTrigger() {
+        g.update(CarState(speedKmh = 100f), 0)
+        assertNull(g.update(CarState(parkedOrNeutral = true, naviStopZone = true), 10_000))
+    }
+
+    @Test fun rightSteeringAloneTriggers() {
+        g.update(CarState(speedKmh = 100f, steeringDeg = -25f), 0)
+        assertNotNull(g.update(CarState(speedKmh = 0f), 15_000))
+    }
+
     @Test fun leftOrOldRightCueInDriveDoesNotTrigger() {
-        g.update(CarState(speedKmh = 100f, steeringDeg = -3f), 0)
+        g.update(CarState(speedKmh = 100f, steeringDeg = 30f), 0)
         assertNull(g.update(CarState(speedKmh = 0f), 10_000))
         g.update(CarState(speedKmh = 100f, rightSignal = true), 20_000)
         g.update(CarState(speedKmh = 30f), 40_000)

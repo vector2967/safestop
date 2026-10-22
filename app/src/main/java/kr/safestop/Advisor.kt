@@ -23,10 +23,17 @@ class Advisor(
         }
         // 고속 주행 중에만 안내한다. 정차 중이면 이미 쉬는 중이거나 비상정차 안내가 우선
         if (s.speedKmh < 60f) return null
-        val lowEnergy = (s.socPct ?: 100) <= lowSocPct || (s.fuelPct ?: 100) <= lowFuelPct
+        val lowEnergy = lowEnergy(s)
         val longDrive = drivingSince?.let { now - it >= longDriveMs } ?: false
         return listOfNotNull(Advice.LOW_ENERGY.takeIf { lowEnergy }, Advice.LONG_DRIVE.takeIf { longDrive })
             .firstOrNull { now - (lastAdvice[it] ?: Long.MIN_VALUE / 2) >= cooldownMs }
             ?.also { lastAdvice[it] = now }
     }
+
+    fun stillValid(a: Advice, s: CarState) = when (a) {
+        Advice.LOW_ENERGY -> lowEnergy(s)
+        Advice.LONG_DRIVE -> drivingSince != null
+    }
+
+    private fun lowEnergy(s: CarState) = (s.socPct ?: 100) <= lowSocPct || (s.fuelPct ?: 100) <= lowFuelPct
 }

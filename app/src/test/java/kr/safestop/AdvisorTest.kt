@@ -1,7 +1,9 @@
 package kr.safestop
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AdvisorTest {
@@ -33,5 +35,10 @@ class AdvisorTest {
         a.update(CarState(parkedOrNeutral = true), h + 11 * 60_000L)
         a.update(CarState(speedKmh = 100f), h + 12 * 60_000L)
         assertNull(a.update(CarState(speedKmh = 100f), 2 * h + 30 * 60_000L))
+    }
+
+    @Test fun lowEnergyAdviceExpiresAfterCharging() {
+        assertTrue(a.stillValid(Advice.LOW_ENERGY, CarState(socPct = 10)))
+        assertFalse(a.stillValid(Advice.LOW_ENERGY, CarState(socPct = 80)))
     }
 }

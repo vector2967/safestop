@@ -15,6 +15,7 @@ data class CarState(
     val fuelPct: Int? = null,
     val rightSignal: Boolean = false,
     val steeringDeg: Float = 0f,
+    val naviStopZone: Boolean = false,
 )
 
 class StopGuide(
@@ -38,19 +39,21 @@ class StopGuide(
     fun update(s: CarState, now: Long): String? {
         if (s.speedKmh >= highwaySpeedKmh || s.speedLimitKmh >= 100) lastHighwayAt = now
         val onHighway = now - lastHighwayAt <= highwayMemoryMs
-        // PERF_STEERING_ANGLE은 바퀴 각도(왼쪽 음수). 고속 차로 변경이 1도 안팎이라 1도로 둔다
-        if (s.speedKmh >= 60f && (s.rightSignal || s.steeringDeg >= 1f)) pullOverCueAt = now
+        // 에뮬레이터 실측: Pleos 핸들 각도는 오른쪽이 음수. 고속 차로 변경은 핸들 10도 안팎
+        if (s.speedKmh >= 60f && (s.rightSignal || s.steeringDeg <= -10f)) pullOverCueAt = now
 
         if (step == Step.IDLE) {
             if (s.speedKmh >= 10f && !s.parkedOrNeutral) armed = true
             // 고속에서 우측으로 빠지며 30초 안에 멈추면 D단이어도 갓길 정차로 본다(정체와 구분)
             val pulledOver = now - pullOverCueAt <= pullOverMs
-            val stopped = s.speedKmh < 1f && (s.parkedOrNeutral || s.driverDoorOpen || pulledOver)
+            // 배터리·연료가 바닥난 채 멈췄으면 D단이어도 고장 정차
+            val outOfEnergy = (s.socPct ?: 100) <= 3 || (s.fuelPct ?: 100) <= 2
+            val stopped = s.speedKmh < 1f && (s.parkedOrNeutral || s.driverDoorOpen || pulledOver || outOfEnergy)
             return when {
                 s.airbagDeployed -> go(Step.HAZARD, now)
                 // 휴게소·졸음쉼터 정차는 정상 정차
                 // 사용자가 끈 정차는 다시 달릴 때까지 재감지하지 않는다
-                armed && onHighway && stopped && !s.nearStopZone -> go(Step.CONFIRM, now)
+                armed && onHighway && stopped && !s.nearStopZone && !s.naviStopZone -> go(Step.CONFIRM, now)
                 else -> null
             }
         }

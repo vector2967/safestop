@@ -49,7 +49,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         f = Fonts(this)
         buildUi()
-        val missing = arrayOf(Car.PERMISSION_SPEED, Car.PERMISSION_READ_STEERING_STATE, Manifest.permission.POST_NOTIFICATIONS)
+        val missing = arrayOf(Car.PERMISSION_SPEED, Manifest.permission.POST_NOTIFICATIONS)
             .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
         GuardService.start(this, intent)
