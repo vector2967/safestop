@@ -233,7 +233,7 @@ class MainActivity : Activity() {
 
         val report = Guard.report.takeIf { step in setOf(Step.TRUNK, Step.REPORT) }
         qrBox.visibility = if (report == null) View.GONE else View.VISIBLE
-        qrNote.text = if (step == Step.TRUNK) "내리기 전에 휴대폰으로 찍기" else "찍으면 112 신고 문자"
+        qrNote.text = if (step == Step.TRUNK) "내리기 전에 휴대폰 카메라로 찍어 두세요" else "찍으면 112 문자 신고 창이 열립니다"
         if (report != null && report.sms != qrFor) { qr.setImageBitmap(report.qr(dp(220))); qrFor = report.sms }
 
         primary.visibility = if (idle && s.speedKmh >= 1f) View.GONE else View.VISIBLE
@@ -259,10 +259,10 @@ class MainActivity : Activity() {
     private fun copy(step: Step) = when (step) {
         Step.IDLE -> Triple(R.drawable.ic_road, "고속도로 정차 감시 중", "차가 고속도로에 멈추면 대피 순서를 음성으로 안내합니다.")
         Step.CONFIRM -> Triple(R.drawable.ic_hazard, "고속도로 정차를 감지했어요", "잠시 뒤 대피 안내를 시작합니다.")
-        Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "뒤차가 멀리서도 볼 수 있게.")
-        Step.TRUNK -> Triple(R.drawable.ic_trunk, "트렁크를 여세요", "열린 트렁크가 뒤차에 정차를 알려 줍니다.")
-        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 뒤쪽 말고 가드레일 너머로.")
-        Step.REPORT -> Triple(R.drawable.ic_check, "112에 신고하세요", "견인은 1588-2504(무료).")
+        Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "대시보드 가운데에 있는 빨간 삼각형 버튼을 누르세요.")
+        Step.TRUNK -> Triple(R.drawable.ic_trunk, "트렁크를 여세요", "트렁크를 열어 두면 뒤차가 고장 차량인 것을 멀리서 알아봅니다.")
+        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 앞뒤에 서 있지 말고 가드레일을 넘어 도로 바깥에서 기다리세요.")
+        Step.REPORT -> Triple(R.drawable.ic_check, "112에 신고하세요", "한국도로공사 1588-2504에 전화하면 가까운 안전지대까지 무료로 견인해 줍니다.")
     }
 
     private fun text(size: Float, weight: Int, color: Int) = TextView(this).style(f, size, weight, color)

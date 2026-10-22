@@ -78,4 +78,16 @@ class StopGuideTest {
         g.update(CarState(speedKmh = 30f), 20_000)
         assertEquals(Step.IDLE, g.step)
     }
+
+    @Test fun dismissedStopStaysQuietUntilDrivingAgain() {
+        g.update(CarState(speedKmh = 100f), 0)
+        g.update(CarState(parkedOrNeutral = true), 10_000)
+        assertEquals(Step.CONFIRM, g.step)
+        g.dismiss()
+        assertNull(g.update(CarState(parkedOrNeutral = true), 11_000))
+        assertNull(g.update(CarState(parkedOrNeutral = true), 60_000))
+        g.update(CarState(speedKmh = 100f), 70_000)
+        g.update(CarState(parkedOrNeutral = true), 80_000)
+        assertEquals(Step.CONFIRM, g.step)
+    }
 }

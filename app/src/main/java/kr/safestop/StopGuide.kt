@@ -29,17 +29,20 @@ class StopGuide(
     private var lastSpokeAt = 0L
     private var repeats = 0
     private var remindedPassengers = false
+    private var armed = true
 
     fun update(s: CarState, now: Long): String? {
         if (s.speedKmh >= highwaySpeedKmh || s.speedLimitKmh >= 100) lastHighwayAt = now
         val onHighway = now - lastHighwayAt <= highwayMemoryMs
 
         if (step == Step.IDLE) {
+            if (s.speedKmh >= 10f && !s.parkedOrNeutral) armed = true
             val stopped = s.speedKmh < 1f && (s.parkedOrNeutral || s.driverDoorOpen)
             return when {
                 s.airbagDeployed -> go(Step.HAZARD, now)
                 // 휴게소·졸음쉼터 정차는 정상 정차
-                onHighway && stopped && !s.nearStopZone -> go(Step.CONFIRM, now)
+                // 사용자가 끈 정차는 다시 달릴 때까지 재감지하지 않는다
+                armed && onHighway && stopped && !s.nearStopZone -> go(Step.CONFIRM, now)
                 else -> null
             }
         }
@@ -89,6 +92,8 @@ class StopGuide(
     fun confirmLeftSec(now: Long) = ((confirmMs - (now - stepSince) + 999) / 1000).coerceAtLeast(0)
 
     fun reset() { step = Step.IDLE; remindedPassengers = false }
+
+    fun dismiss() { reset(); armed = false }
 
     private fun go(next: Step, now: Long): String {
         step = next; stepSince = now; lastSpokeAt = now; repeats = 0

@@ -52,7 +52,7 @@ object Guard {
     var say: (String) -> Unit = {}
 
     fun next() { guide.next(System.currentTimeMillis())?.let(say); onChange?.invoke() }
-    fun cancel() { guide.reset(); onChange?.invoke() }
+    fun cancel() { guide.dismiss(); onChange?.invoke() }
     fun start() { guide.startManually(System.currentTimeMillis())?.let(say); onChange?.invoke() }
     fun replay() { StopGuide.SPEECH[guide.step]?.let(say) }
 }
