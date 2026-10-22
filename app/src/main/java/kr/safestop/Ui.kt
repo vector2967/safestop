@@ -55,7 +55,7 @@ class StepRow(ctx: Context, fonts: Fonts, number: Int, icon: Int, label: String)
         orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(ctx.dp(20), 0, ctx.dp(20), 0)
         addView(num, LayoutParams(ctx.dp(52), ctx.dp(52)))
-        addView(pic, LayoutParams(ctx.dp(44), ctx.dp(44)).apply { marginStart = ctx.dp(18) })
+        addView(pic, LayoutParams(ctx.dp(52), ctx.dp(52)).apply { marginStart = ctx.dp(18) })
         addView(name, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = ctx.dp(16) })
         addView(done, LayoutParams(ctx.dp(40), ctx.dp(40)))
     }
