@@ -45,6 +45,19 @@ adb shell am start -n kr.safestop/.MainActivity --es fake_location "36.882650,12
 adb shell am start -n kr.safestop/.MainActivity --es route "36.3504,127.3845"
 ```
 
+### 음성 명령 테스트 (debug 빌드 전용)
+에뮬레이터 마이크 대신 16kHz·16bit·mono wav를 STT에 넣어 확인합니다. 실제 마이크로 시연하려면 에뮬레이터 확장 설정에서 "Virtual microphone uses host audio input"을 켭니다.
+```bash
+adb push yes.wav /data/local/tmp/yes.wav
+adb shell am start -n kr.safestop/.MainActivity --es stt_wav /data/local/tmp/yes.wav
+```
+
+### 야간 안내 확인
+Virtual Console에서 전조등을 켜면(또는 19시~6시) 대피 단계에 야간 주의 문장이 붙습니다.
+```bash
+curl -X PUT "http://127.0.0.1:8088/vehicle/lights?feature=headlamp_mode&value=LowBeam"
+```
+
 ### 시연 시나리오 (자동)
 `demo/scenario.sh`가 위 과정을 Virtual Console REST API로 재생합니다. Git Bash에서 실행하며 curl이 필요합니다.
 ```bash
@@ -67,15 +80,23 @@ bash demo/scenario.sh
 - **터널**: 터널 위치는 앱이 알 수 없어서(내비 주의 구간에 터널 유형이 없음) 대피 안내에 "터널 안이면 비상구로" 요령을 함께 넣었습니다.
 - **신고 위치**: 번들한 휴게소·졸음쉼터 좌표(468곳)와 내비의 진행 방향으로 "경부고속도로 ○○휴게소 2.1km 전, ○○졸음쉼터에서 3.4km 지난 곳" 같은 문구를 만들어 화면과 QR(112 문자신고)에 넣습니다.
 - **예방 안내**: 60km/h 이상 주행 중 배터리 15%·연료 10% 이하이거나 2시간 넘게 쉬지 않고 운전하면 "갓길에 서지 말고 ○km 앞 ○○휴게소에서 쉬어 가세요"라고 말하고, 알림의 **경유지로 추가** 버튼으로 내비에 경유지를 넣습니다(같은 안내는 30분에 한 번).
-- 판단 로직은 `StopGuide.kt`·`Advisor.kt`, 위치 계산은 `Places.kt`에 있고, 단위 테스트는 `./gradlew testDebugUnitTest`로 실행합니다.
+- **음성으로 답하기**: 안내 음성이 끝나면 마이크를 열어 "했어요·열었어요·나왔어요"(다음 단계), "다시"(다시 듣기), 확인 단계의 "정상이에요"(취소)를 알아듣습니다. "아직·못 했어요"는 넘기지 않습니다. 안내 음성이 끝난 뒤에만 들어서 자기 목소리를 인식하지 않습니다.
+- **야간**: 전조등이 켜져 있거나(자동 전조등은 밤·터널에서 켜짐) 19시~6시면 대피 단계에 "밤에는 뒤차가 멈춘 차와 사람을 잘 보지 못합니다. 차 옆에 서 있지 말고 바로 가드레일 밖으로 피하세요."를 덧붙입니다.
+- **가족에게 위치 보내기**: 신고 단계에서 112 문자 QR 옆에 가족 공유 QR을 함께 보여 줍니다. 찍으면 받는 사람이 빈 문자 창에 위치 문장과 카카오맵 링크가 들어갑니다.
+- **외국어**: 상단 언어 버튼으로 한국어·English·中文을 바꿉니다(외국인 렌터카). 바꾸면 지금 단계를 그 언어로 다시 읽습니다. 112 문자와 위치 문장은 받는 사람이 한국 경찰·가족이라 한국어로 둡니다. 에뮬레이터 온디바이스 TTS·STT에는 중국어가 없어서(`unsupported locale: zh-CN`) 중국어는 화면만 중국어, 음성은 영어로 자동 대체합니다. 112는 2024-03-18부터 영어·중국어 통역을 24시간 제공합니다.
+- **공회전 환기 안내**: 연료 잔량이 있는 차(내연기관·하이브리드)가 P단에 사람을 태운 채 시동을 30분 넘게 켜 두면 일산화탄소 위험을 알리고 환기를 권합니다(1시간에 한 번). 시동은 AAOS `IGNITION_STATE`로 읽습니다.
+- **이번 달 기록**: 대기 화면에 이번 달 주행 시간, 쉬어 가기 안내 횟수, 정차 감지 횟수를 보여 줍니다(기기 안에만 저장).
+- 판단 로직은 `StopGuide.kt`·`Advisor.kt`·`Voice.kt`, 언어별 문구는 `Texts.kt`, 위치 계산은 `Places.kt`에 있고, 단위 테스트는 `./gradlew testDebugUnitTest`로 실행합니다.
 
 ## 사용한 Pleos SDK · API
 | SDK | 용도 |
 |---|---|
 | Vehicle 2.3.2 | 도어·트렁크, 좌석 착좌, 에어백 전개, 배터리 SOC·연료 잔량 |
 | NaviHelper 3.0.5 | 현재 위치·진행 방향(신고 위치 문구, 휴게소 판정), 도로 제한속도, 쉼터 경유지 추가 |
-| TextToSpeech 3.3.1 (ON_DEVICE) | 단계별 한국어 음성 안내 |
-| AAOS Car API | 차속(`PERF_VEHICLE_SPEED`), 기어(`GEAR_SELECTION`, Pleos 기어 API는 deprecated), 주행 제한 대응(`distractionOptimized`) |
+| Vehicle 2.3.2 (Light) | 하향등 상태(야간·터널 판단) |
+| TextToSpeech 3.3.1 (ON_DEVICE) | 단계별 음성 안내(한국어·영어), 안내가 끝난 시점(`onDone`)에 음성 인식 시작 |
+| SpeechToText 3.3.1 (ON_DEVICE) | 음성으로 단계 넘기기·다시 듣기·취소 |
+| AAOS Car API | 차속(`PERF_VEHICLE_SPEED`), 기어(`GEAR_SELECTION`, Pleos 기어 API는 deprecated), 시동(`IGNITION_STATE`), 주행 제한 대응(`distractionOptimized`) |
 
 ## 빌드
 ```bash
@@ -88,9 +109,10 @@ bash demo/scenario.sh
 - 에뮬레이터 v2.1.0에서는 Vehicle SDK의 착좌 값이 Virtual Console 표시와 반대로 전달됩니다. `GuardService.SDK_OCCUPIED`로 맞춰 두었습니다.
 - 백그라운드에서 화면을 직접 띄우는 것은 플랫폼이 막아서 전체 화면 알림으로 엽니다. 음성 안내는 화면과 무관하게 동작합니다.
 - 톨게이트 좌표와 민자고속도로 시설은 로그인 없이 받을 수 있는 공개 데이터가 없어 아직 포함하지 않았습니다.
+- 에뮬레이터 온디바이스 STT는 합성 음성으로 시험했을 때 "켰어요"를 자주 틀렸습니다("기억이 있어요"). "했어요·다음·나왔어요·다시"는 잘 인식해서 화면 안내도 그 말로 했습니다.
 
 ## 오픈소스 · 데이터 · 라이선스
-- Pleos Connect SDK(Vehicle, NaviHelper, TextToSpeech): 42dot SDK License Agreement
+- Pleos Connect SDK(Vehicle, NaviHelper, TextToSpeech, SpeechToText): 42dot SDK License Agreement
 - ZXing core 3.5.3(QR 생성): Apache License 2.0
 - JUnit 4.13.2(테스트 전용): Eclipse Public License 1.0
 - `app/src/main/assets/highway_places.csv`: 공공데이터포털(한국도로공사) 「전국휴게소정보표준데이터」, 「한국도로공사_졸음쉼터」 가공. 이용허락범위 제한 없음(2026-10-22 수집)

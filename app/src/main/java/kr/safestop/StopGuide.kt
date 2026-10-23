@@ -16,6 +16,8 @@ data class CarState(
     val rightSignal: Boolean = false,
     val steeringDeg: Float = 0f,
     val naviStopZone: Boolean = false,
+    val dark: Boolean = false,
+    val engineOn: Boolean = false,
 )
 
 class StopGuide(
@@ -28,6 +30,11 @@ class StopGuide(
 ) {
     var step = Step.IDLE
         private set
+    var lang = Lang.KO
+    // 음성 엔진이 지원하지 않는 언어(실측: 온디바이스 TTS에 zh-CN 없음)는 화면만 바꾸고 음성은 다른 언어로 읽는다
+    var voiceLang: Lang? = null
+    private val voiceCopy get() = (voiceLang ?: lang).copy
+    private var dark = false
     private var lastHighwayAt = Long.MIN_VALUE / 2
     private var stepSince = 0L
     private var lastSpokeAt = 0L
@@ -37,6 +44,7 @@ class StopGuide(
     private var pullOverCueAt = Long.MIN_VALUE / 2
 
     fun update(s: CarState, now: Long): String? {
+        dark = s.dark
         if (s.speedKmh >= highwaySpeedKmh || s.speedLimitKmh >= 100) lastHighwayAt = now
         val onHighway = now - lastHighwayAt <= highwayMemoryMs
         // 에뮬레이터 실측: Pleos 핸들 각도는 오른쪽이 음수. 고속 차로 변경은 핸들 10도 안팎
@@ -75,7 +83,7 @@ class StopGuide(
                 s.driverDoorOpen && s.occupiedSeats > 0 && !remindedPassengers -> {
                     remindedPassengers = true
                     lastSpokeAt = now
-                    "아직 차 안에 탑승자가 있습니다. 모두 함께 가드레일 밖으로 대피하세요."
+                    voiceCopy.passengersInside
                 }
                 else -> repeatIfIgnored(now)
             }
@@ -87,8 +95,11 @@ class StopGuide(
     private fun repeatIfIgnored(now: Long): String? {
         if (repeats >= 2 || now - lastSpokeAt < repeatMs) return null
         repeats++; lastSpokeAt = now
-        return SPEECH.getValue(step)
+        return speech(step)
     }
+
+    // 밤에는 대피 단계에 야간 주의 문장을 붙인다
+    fun speech(step: Step) = voiceCopy.let { c -> c.speech[step]?.let { if (step == Step.EVACUATE && dark) "$it ${c.night}" else it } }
 
     fun next(now: Long): String? = when (step) {
         Step.CONFIRM -> go(Step.HAZARD, now)
@@ -111,16 +122,6 @@ class StopGuide(
 
     private fun go(next: Step, now: Long): String {
         step = next; stepSince = now; lastSpokeAt = now; repeats = 0
-        return SPEECH.getValue(next)
-    }
-
-    companion object {
-        val SPEECH = mapOf(
-            Step.CONFIRM to "고속도로 정차가 감지되었습니다. 5초 뒤 대피 안내를 시작합니다.",
-            Step.HAZARD to "지금 바로 비상등을 켜세요.",
-            Step.TRUNK to "트렁크를 열어 뒤차에 정차 사실을 알리세요.",
-            Step.EVACUATE to "휴대폰을 챙겨 차 뒤쪽이 아닌, 가드레일 밖 안전한 곳으로 모두 대피하세요. 터널 안이면 비상구로 대피하세요.",
-            Step.REPORT to "대피 후 112나 한국도로공사 1588-2504로 신고하세요. 무료 긴급견인을 받을 수 있습니다.",
-        )
+        return speech(next)!!
     }
 }

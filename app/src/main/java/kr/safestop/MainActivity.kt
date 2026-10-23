@@ -38,6 +38,11 @@ class MainActivity : Activity() {
     private lateinit var qrBox: LinearLayout
     private lateinit var qr: ImageView
     private lateinit var qrNote: TextView
+    private lateinit var familyCell: LinearLayout
+    private lateinit var familyQr: ImageView
+    private lateinit var familyNote: TextView
+    private lateinit var hint: TextView
+    private lateinit var langBtn: TextView
     private lateinit var place: TextView
     private lateinit var primary: Button
     private lateinit var secondary: Button
@@ -87,10 +92,17 @@ class MainActivity : Activity() {
 
         band = text(26f, 700, Palette.ink).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), 0, dp(20), 0) }
         where = text(24f, 500, Palette.inkDim).apply { gravity = Gravity.CENTER_VERTICAL or Gravity.END }
+        // 외국인 렌터카 운전자를 위해 언제든 언어를 바꿀 수 있게 둔다(바꾸면 지금 단계를 다시 읽는다)
+        langBtn = text(24f, 600, Palette.ink).apply {
+            gravity = Gravity.CENTER; setPadding(dp(24), 0, dp(24), 0)
+            background = rounded(Color.TRANSPARENT, dp(28).toFloat(), dp(2), Palette.hairline)
+            setOnClickListener { performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); Guard.setLang(this@MainActivity, Guard.guide.lang.next()) }
+        }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(band, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(56)))
             addView(where, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(16) })
+            addView(langBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(56)).apply { marginStart = dp(16) })
         }
 
         val plate = LinearLayout(this).apply {
@@ -107,13 +119,19 @@ class MainActivity : Activity() {
             plate.addView(row, if (wide) LinearLayout.LayoutParams(-1, dp(96)).apply { if (i > 0) topMargin = dp(12) }
             else LinearLayout.LayoutParams(0, dp(96), 1f).apply { if (i > 0) marginStart = dp(12) })
         }
-        qr = ImageView(this)
-        qrBox = LinearLayout(this).apply {
+        fun qrCell(img: ImageView, note: TextView) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            addView(img, LinearLayout.LayoutParams(dp(QR_DP), dp(QR_DP)))
+            addView(note.apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }, LinearLayout.LayoutParams(dp(QR_DP + 40), -2))
+        }
+        qr = ImageView(this); qrNote = text(22f, 600, Palette.ink)
+        familyQr = ImageView(this); familyNote = text(22f, 600, Palette.ink)
+        familyCell = qrCell(familyQr, familyNote)
+        qrBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, dp(20), 0, 0)
-            addView(qr, LinearLayout.LayoutParams(dp(220), dp(220)))
-            qrNote = text(24f, 600, Palette.ink).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) }
-            addView(qrNote)
+            addView(qrCell(qr, qrNote))
+            addView(familyCell, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(16) })
         }
         if (wide) plate.addView(qrBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -125,6 +143,7 @@ class MainActivity : Activity() {
         }
         title = text(64f, 700, Palette.ink).apply { setLineSpacing(0f, 1.1f) }
         body = text(30f, 500, Palette.inkDim).apply { setLineSpacing(0f, 1.25f) }
+        hint = text(26f, 600, Palette.glow)
         alert = text(40f, 700, Palette.onColor).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(28), dp(24), dp(28), dp(24)) }
         place = text(32f, 600, Palette.ink)
         strip = StripMap(this, f)
@@ -136,6 +155,7 @@ class MainActivity : Activity() {
             addView(picFrame, LinearLayout.LayoutParams(dp(220), dp(220)))
             addView(title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(body, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            addView(hint, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
             addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
             addView(place, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
             addView(strip, LinearLayout.LayoutParams(-1, -2))
@@ -159,7 +179,7 @@ class MainActivity : Activity() {
             compoundDrawablePadding = dp(12); compoundDrawableTintList = android.content.res.ColorStateList.valueOf(Palette.ink)
         }
         end = button(Color.TRANSPARENT, Palette.inkDim, 600) {}.apply {
-            text = "길게 눌러 종료"; background = rounded(Color.TRANSPARENT, dp(16).toFloat(), dp(2), Palette.hairline)
+            background = rounded(Color.TRANSPARENT, dp(16).toFloat(), dp(2), Palette.hairline)
             setOnLongClickListener { Guard.cancel(); true }
         }
         val actions = LinearLayout(this).apply {
@@ -185,23 +205,26 @@ class MainActivity : Activity() {
     private fun onSecondary() = if (Guard.guide.step == Step.CONFIRM) Guard.cancel() else Guard.replay()
 
     private fun render() {
+        val c = Guard.copy
         val s = Guard.state
         val step = Guard.guide.step
         val idle = step == Step.IDLE
         val asking = idle && missingPermissions().isNotEmpty()
 
         val (bandText, bandColor, bandInk) = when (step) {
-            Step.IDLE -> if (Guard.problems.isEmpty() && !asking) Triple("●  감시 중", Palette.raised, Palette.glow)
-                else Triple("!  점검 필요", Palette.caution, Palette.onColor)
-            Step.CONFIRM -> Triple("정차 감지", Palette.caution, Palette.onColor)
-            Step.REPORT -> Triple("대피 완료", Palette.safe, Palette.onColor)
-            else -> Triple("대피 안내 중", Palette.danger, Palette.onColor)
+            Step.IDLE -> if (Guard.problems.isEmpty() && !asking) Triple(c.bandWatching, Palette.raised, Palette.glow)
+                else Triple(c.bandCheck, Palette.caution, Palette.onColor)
+            Step.CONFIRM -> Triple(c.bandDetected, Palette.caution, Palette.onColor)
+            Step.REPORT -> Triple(c.bandDone, Palette.safe, Palette.onColor)
+            else -> Triple(c.bandGuiding, Palette.danger, Palette.onColor)
         }
+        langBtn.text = Guard.guide.lang.label
         band.text = bandText; band.setTextColor(bandInk); band.background = rounded(bandColor, dp(28).toFloat())
         where.text = Guard.report?.around?.road ?: Guard.address ?: ""
 
         val order = listOf(Step.HAZARD, Step.TRUNK, Step.EVACUATE, Step.REPORT)
         rows.forEachIndexed { i, row ->
+            row.label(c.stepNames[i])
             val at = order.indexOf(step)
             row.show(when {
                 at < 0 -> StepRow.State.WAITING
@@ -211,7 +234,8 @@ class MainActivity : Activity() {
             })
         }
 
-        val (icon, t, b) = copy(step)
+        val icon = ICONS.getValue(step)
+        val (t, b) = c.screen.getValue(step)
         pic.setImageResource(icon)
         val confirming = step == Step.CONFIRM
         pic.visibility = if (confirming) View.INVISIBLE else View.VISIBLE
@@ -221,16 +245,20 @@ class MainActivity : Activity() {
             count.text = Guard.guide.confirmLeftSec(System.currentTimeMillis()).toString()
             count.background = rounded(Palette.caution, dp(90).toFloat())
         }
-        title.text = if (asking) "권한을 허용해 주세요" else t
-        body.text = PERMISSION_WHY.takeIf { asking } ?: Guard.problems.takeIf { idle && it.isNotEmpty() }?.joinToString("\n")
-            ?: Guard.advice.takeIf { idle } ?: b
+        title.text = if (asking) c.permTitle else t
+        body.text = c.permWhy.takeIf { asking } ?: Guard.problems.takeIf { idle && it.isNotEmpty() }?.joinToString("\n")
+            ?: Guard.advice.takeIf { idle } ?: if (step == Step.EVACUATE && s.dark) "$b\n${c.night}" else b
 
         val left = s.occupiedSeats
         alert.visibility = if (step == Step.EVACUATE && left > 0) View.VISIBLE else View.GONE
-        alert.text = "차 안에 아직 ${left}명 있어요"
+        alert.text = c.peopleLeft.format(left)
+        hint.text = if (idle) Guard.stats?.summary(c) else (Guard.guide.voiceLang?.copy ?: c).sayHint[step]?.takeIf { Guard.voice }
+        hint.setTextColor(if (idle) Palette.inkDim else Palette.glow)
+        hint.visibility = if (hint.text.isNullOrEmpty()) View.GONE else View.VISIBLE
         val stillInside = step == Step.EVACUATE && left > 0
         alert.background = rounded(Palette.danger, dp(16).toFloat())
 
+        strip.copy = c
         strip.around = Guard.report?.around
         strip.visibility = if (strip.around != null && step in setOf(Step.IDLE, Step.REPORT)) View.VISIBLE else View.GONE
         place.text = Guard.report?.where
@@ -238,17 +266,23 @@ class MainActivity : Activity() {
 
         val report = Guard.report.takeIf { step in setOf(Step.TRUNK, Step.REPORT) }
         qrBox.visibility = if (report == null) View.GONE else View.VISIBLE
-        qrNote.text = if (step == Step.TRUNK) "내리기 전에 휴대폰 카메라로 찍어 두세요" else "찍으면 112 문자 신고 창이 열립니다"
-        if (report != null && report.sms != qrFor) { qr.setImageBitmap(report.qr(dp(220))); qrFor = report.sms }
+        qrNote.text = if (step == Step.TRUNK) c.noteTrunk else c.label112
+        familyNote.text = c.labelFamily
+        // 트렁크 단계에서는 신고 QR 하나만, 대피 후에는 가족 공유 QR도 보여 준다
+        familyCell.visibility = if (step == Step.REPORT) View.VISIBLE else View.GONE
+        if (report != null && report.sms != qrFor) {
+            qr.setImageBitmap(Report.qr(report.sms, dp(QR_DP))); familyQr.setImageBitmap(Report.qr(report.familySms, dp(QR_DP))); qrFor = report.sms
+        }
 
         primary.visibility = if (idle && s.speedKmh >= 1f) View.GONE else View.VISIBLE
-        primary.text = when (step) { Step.IDLE -> if (asking) "권한 허용하기" else "대피 안내 시작"; Step.CONFIRM -> "지금 시작"; Step.REPORT -> "112 전화"; else -> if (stillInside) "모두 나왔어요" else "다음 단계" }
+        primary.text = when (step) { Step.IDLE -> if (asking) c.allow else c.start; Step.CONFIRM -> c.startNow; Step.REPORT -> c.call; else -> if (stillInside) c.allOut else c.next }
         // 사람이 남아 있으면 넘기기 버튼을 눈에 띄지 않게 해 성급한 진행을 막는다
         primary.background = rounded(if (stillInside) Palette.pressed else Palette.glow, dp(16).toFloat())
         primary.setTextColor(if (stillInside) Palette.ink else Palette.onColor)
         (secondary.layoutParams as LinearLayout.LayoutParams).marginStart = if (primary.visibility == View.VISIBLE) dp(24) else 0
         secondary.visibility = if (idle) View.GONE else View.VISIBLE
-        secondary.text = if (confirming) "정상 정차예요" else "다시 듣기"
+        secondary.text = if (confirming) c.normalStop else c.replay
+        end.text = c.endHold
         secondary.setCompoundDrawablesRelativeWithIntrinsicBounds(if (confirming) 0 else R.drawable.ic_replay, 0, 0, 0)
         end.visibility = if (idle || confirming) View.GONE else View.VISIBLE
 
@@ -259,15 +293,6 @@ class MainActivity : Activity() {
             }
         }
         shownStep = step
-    }
-
-    private fun copy(step: Step) = when (step) {
-        Step.IDLE -> Triple(R.drawable.ic_road, "고속도로 정차 감시 중", "차가 고속도로에 멈추면 대피 순서를 음성으로 안내합니다.")
-        Step.CONFIRM -> Triple(R.drawable.ic_hazard, "고속도로 정차를 감지했어요", "잠시 뒤 대피 안내를 시작합니다.")
-        Step.HAZARD -> Triple(R.drawable.ic_hazard, "비상등을 켜세요", "대시보드 가운데에 있는 빨간 삼각형 버튼을 누르세요.")
-        Step.TRUNK -> Triple(R.drawable.ic_trunk, "트렁크를 여세요", "트렁크를 열어 두면 뒤차가 고장 차량인 것을 멀리서 알아봅니다.")
-        Step.EVACUATE -> Triple(R.drawable.ic_evacuate, "가드레일 밖으로 나가세요", "차 앞뒤에 서 있지 말고 가드레일을 넘어 도로 바깥에서 기다리세요. 터널 안이면 초록 유도등을 따라 비상구로 나가세요.")
-        Step.REPORT -> Triple(R.drawable.ic_check, "112에 신고하세요", "한국도로공사 1588-2504에 전화하면 가까운 안전지대까지 무료로 견인해 줍니다.")
     }
 
     private fun text(size: Float, weight: Int, color: Int) = TextView(this).style(f, size, weight, color)
@@ -286,7 +311,9 @@ class MainActivity : Activity() {
     }
 }
 
-private const val PERMISSION_WHY = "정차를 감지하려면 차량 속도를, 화면을 띄우려면 알림을 써야 합니다. 차량 속도는 시스템 창에 '위치 정보'로 표시됩니다. 주행 중에는 창이 열리지 않으니 정차한 뒤 눌러 주세요."
+private const val QR_DP = 200
+private val ICONS = mapOf(Step.IDLE to R.drawable.ic_road, Step.CONFIRM to R.drawable.ic_hazard, Step.HAZARD to R.drawable.ic_hazard,
+    Step.TRUNK to R.drawable.ic_trunk, Step.EVACUATE to R.drawable.ic_evacuate, Step.REPORT to R.drawable.ic_check)
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) { GuardService.start(context) }

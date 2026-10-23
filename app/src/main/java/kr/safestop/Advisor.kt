@@ -37,3 +37,18 @@ class Advisor(
 
     private fun lowEnergy(s: CarState) = (s.socPct ?: 100) <= lowSocPct || (s.fuelPct ?: 100) <= lowFuelPct
 }
+
+// 차박·대기 중 공회전: 내연기관(연료값이 있는 차)이 P단에 사람을 태운 채 시동을 오래 켜 두면 환기를 안내한다
+class IdleWatch(private val warnAfterMs: Long = 30 * 60_000L, private val repeatMs: Long = 60 * 60_000L) {
+    private var since: Long? = null
+    private var lastWarn = Long.MIN_VALUE / 2
+
+    fun update(s: CarState, now: Long): Boolean {
+        val idling = s.engineOn && s.parkedOrNeutral && s.occupiedSeats > 0 && s.fuelPct != null
+        if (!idling) { since = null; return false }
+        val start = since ?: now.also { since = it }
+        if (now - start < warnAfterMs || now - lastWarn < repeatMs) return false
+        lastWarn = now
+        return true
+    }
+}

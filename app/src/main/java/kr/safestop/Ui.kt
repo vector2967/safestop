@@ -49,6 +49,8 @@ class StepRow(ctx: Context, fonts: Fonts, number: Int, icon: Int, label: String)
     private val num = TextView(ctx).style(fonts, 26f, 700, Palette.ink).apply { text = number.toString(); gravity = Gravity.CENTER }
     private val pic = ImageView(ctx).apply { setImageResource(icon) }
     private val name = TextView(ctx).style(fonts, 30f, 600, Palette.ink).apply { text = label }
+
+    fun label(text: String) { name.text = text }
     private val done = ImageView(ctx).apply { setImageResource(R.drawable.ic_check) }
 
     init {
@@ -77,6 +79,7 @@ class StepRow(ctx: Context, fonts: Fonts, number: Int, icon: Int, label: String)
 class StripMap(ctx: Context, private val fonts: Fonts) : View(ctx) {
     var around: Places.Around? = null
         set(v) { field = v; invalidate() }
+    var copy = Texts.KO
 
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.inkDim; strokeWidth = ctx.dp(6).toFloat(); strokeCap = Paint.Cap.ROUND }
     private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.ink }
@@ -101,11 +104,11 @@ class StripMap(ctx: Context, private val fonts: Fonts) : View(ctx) {
         val total = (back?.second ?: 0.0) + (ahead?.second ?: 0.0)
         val x = if (back != null && ahead != null && total > 0)
             left + (right - left) * (0.15f + 0.7f * (back.second / total).toFloat()) else (left + right) / 2
-        back?.let { mark(c, left + context.dp(8), y, it, Paint.Align.LEFT, if (ahead != null) " 지남" else "") }
-        ahead?.let { mark(c, right - context.dp(8), y, it, Paint.Align.RIGHT, " 앞") }
+        back?.let { mark(c, left + context.dp(8), y, it, Paint.Align.LEFT, if (ahead != null) copy.passed else "") }
+        ahead?.let { mark(c, right - context.dp(8), y, it, Paint.Align.RIGHT, copy.ahead) }
         c.drawCircle(x, y, context.dp(22).toFloat(), halo)
         c.drawCircle(x, y, context.dp(12).toFloat(), dot)
-        c.drawText("현재 위치", x, y - context.dp(30), here)
+        c.drawText(copy.here, x, y - context.dp(30), here)
     }
 
     private fun mark(c: Canvas, x: Float, y: Float, p: Pair<Place, Double>, align: Paint.Align, side: String) {
