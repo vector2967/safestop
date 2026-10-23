@@ -151,7 +151,7 @@ class GuardService : Service() {
         val add = PendingIntent.getForegroundService(this, 3, Intent(this, GuardService::class.java)
             .setAction(ACTION_ADD_WAYPOINT).putExtra("lat", place.lat).putExtra("lng", place.lng).putExtra("name", name),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val n = Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info)
+        val n = Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(R.drawable.ic_road)
             .setContentTitle("$name 경유 추천").setContentText(text).setCategory(Notification.CATEGORY_NAVIGATION)
             .addAction(Notification.Action.Builder(null, "경유지로 추가", add).build()).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(3, n)
@@ -267,7 +267,7 @@ class GuardService : Service() {
     private fun showGuide() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
-        val n = Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_alert)
+        val n = Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(R.drawable.ic_hazard)
             .setContentTitle("고속도로 정차 감지").setContentText("대피 안내를 시작합니다")
             // car_warning은 시스템 앱 전용(SEND_CATEGORY_CAR_NOTIFICATIONS)이라 ALARM을 쓴다
             .setCategory(Notification.CATEGORY_ALARM)
@@ -281,7 +281,7 @@ class GuardService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(STATUS_CHANNEL, "감시 상태", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(ALERT_CHANNEL, "정차 경보", NotificationManager.IMPORTANCE_HIGH))
-        return Notification.Builder(this, STATUS_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info)
+        return Notification.Builder(this, STATUS_CHANNEL).setSmallIcon(R.drawable.ic_road)
             .setContentTitle("세이프스톱").setContentText(text).setOngoing(true).build()
     }
 

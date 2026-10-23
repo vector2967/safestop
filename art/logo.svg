@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96">
+  <rect x="0" y="0" width="96" height="96" rx="22" fill="#131417"/>
+  <g transform="translate(-6,-6)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M31,80 L46.5,30 M77,80 L61.5,30" stroke="#D4F57A" stroke-width="5.5"/>
+    <path d="M54,31 L54,35 M54,40.5 L54,44.5" stroke="#D4F57A" stroke-width="3.5"/>
+    <path d="M54,54 L71,80 L37,80 Z" fill="#FF6B3D" stroke="#131417" stroke-width="12"/>
+    <path d="M54,54 L71,80 L37,80 Z" fill="#FF6B3D" stroke="#FF6B3D" stroke-width="6"/>
+    <path d="M54,65 L61,76 L47,76 Z" fill="#131417" stroke="#131417" stroke-width="2"/>
+  </g>
+  <text x="116" y="54" font-family="Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="40" font-weight="800" fill="#FF6B3D" letter-spacing="-1">Safe<tspan fill="#8A8F98">Stop</tspan></text>
+  <text x="118" y="82" font-family="Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="18" font-weight="600" fill="#8A8F98" letter-spacing="2">세이프스톱</text>
+</svg>

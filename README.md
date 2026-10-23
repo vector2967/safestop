@@ -1,3 +1,5 @@
+<p align="center"><img src="art/logo.svg" alt="SafeStop" height="88"></p>
+
 # 세이프스톱 (SafeStop)
 
 **고속도로에서 차가 멈추면 차량이 먼저 알아채고, 대피 순서를 음성으로 하나씩 안내하는 Pleos Connect 앱**
